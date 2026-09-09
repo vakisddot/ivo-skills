@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plain English"
+  short_description: "One answer in extremely simple English"
+  default_prompt: "Use $ivo:simple to explain this in extremely plain English."

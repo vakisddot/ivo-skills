@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ivo Code"
+  short_description: "Smallest complete solution, clearly explained"
+  default_prompt: "Use $ivo:code to implement this change with the smallest complete solution."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Teach Mode"
+  short_description: "Socratic guidance instead of solutions"
+  default_prompt: "Use $ivo:teach to walk me toward the solution instead of handing it over."

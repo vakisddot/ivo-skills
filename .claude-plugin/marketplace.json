@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ivo-skills",
+  "description": "Ivo's personal skills, shared between Claude Code and Codex.",
+  "owner": {
+    "name": "Ivo"
+  },
+  "plugins": [
+    {
+      "name": "ivo",
+      "description": "Ivo's personal skill set: coding standards, teaching mode, plain-English answers, context auditing, codebase roasts, and background removal.",
+      "author": {
+        "name": "Ivo"
+      },
+      "category": "productivity",
+      "source": "./plugins/ivo"
+    }
+  ]
+}

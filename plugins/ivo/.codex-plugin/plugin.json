@@ -1,0 +1,23 @@
+{
+  "name": "ivo",
+  "version": "0.1.0",
+  "description": "Ivo's personal skill set: coding standards, teaching mode, plain-English answers, context auditing, codebase roasts, and background removal.",
+  "author": {
+    "name": "Ivo"
+  },
+  "keywords": ["personal", "workflow", "code-review", "teaching", "images"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Ivo",
+    "shortDescription": "Ivo's personal working style, in one plugin",
+    "longDescription": "Six portable skills Ivo uses across Claude Code and Codex: code for smallest-complete-solution implementation and review, teach for Socratic guidance, simple for plain-English answers, context-check for auditing loaded instructions, roast-codebase for humorous-but-useful review, and remove-bg-image for transparent-PNG cutouts.",
+    "developerName": "Ivo",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Use $ivo:code to implement this change.",
+      "Use $ivo:teach and walk me through this.",
+      "Use $ivo:roast-codebase on this repo."
+    ]
+  }
+}

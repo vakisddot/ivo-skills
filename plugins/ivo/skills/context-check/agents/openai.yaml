@@ -1,0 +1,4 @@
+interface:
+  display_name: "Context Check"
+  short_description: "Audit every instruction loaded this session"
+  default_prompt: "Use $ivo:context-check to show everything loaded into this session."

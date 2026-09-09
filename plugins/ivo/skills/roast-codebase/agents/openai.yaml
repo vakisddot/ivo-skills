@@ -1,0 +1,4 @@
+interface:
+  display_name: "Roast My Codebase"
+  short_description: "Funny but genuinely useful code review"
+  default_prompt: "Use $ivo:roast-codebase on this repository."

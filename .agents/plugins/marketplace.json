@@ -1,0 +1,20 @@
+{
+  "name": "ivo-skills",
+  "interface": {
+    "displayName": "Ivo's Skills"
+  },
+  "plugins": [
+    {
+      "name": "ivo",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ivo"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Remove Background"
+  short_description: "Flood-fill cutout to a transparent PNG"
+  default_prompt: "Use $ivo:remove-bg-image to make this image transparent."
