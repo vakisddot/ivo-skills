@@ -13,11 +13,18 @@ as `ivo:<skill>` — the `ivo-` prefix lives in the namespace, not in the skill 
 | Skill | What it does |
 |---|---|
 | `ivo:code` | Implementation and review using the smallest complete solution that stays clear, correct, and maintainable |
+| `ivo:deslop` | Evidence-based slop audits and scoped cleanup that preserve supported behavior |
 | `ivo:teach` | Socratic mode — guides toward the answer instead of handing it over |
 | `ivo:simple` | Rewrites one answer in extremely plain English, no jargon |
 | `ivo:context-check` | Reports every instruction and file auto-loaded into the session |
 | `ivo:roast-codebase` | Code review that is funny and actually useful |
 | `ivo:remove-bg-image` | Flood-fill background removal to a transparent PNG |
+
+`ivo:code` guides everyday coding; `ivo:deslop` provides a deliberate cleanup pass.
+For example, ask `Use $ivo:deslop to audit my current changes` for findings without
+edits, or `Use $ivo:deslop to clean up src/widgets` for scoped changes. It can also
+audit a whole repository and prioritize areas to tackle. Significant design
+tradeoffs stay with Ivo; supported local cleanup does not need repeated approval.
 
 ## Install
 

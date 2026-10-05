@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ivo Deslop"
+  short_description: "Evidence-based cleanup that preserves behavior"
+  default_prompt: "Use $ivo:deslop to audit my current changes and propose worthwhile cleanup."
