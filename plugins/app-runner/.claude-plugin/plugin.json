@@ -1,0 +1,7 @@
+{
+  "name": "app-runner",
+  "version": "0.1.0",
+  "description": "Build and run the session's checkout from .claude/run.json with a Start/Stop button in the prompt footer, /start and /stop.",
+  "author": { "name": "Ivo" },
+  "types": "./types/index.d.ts"
+}

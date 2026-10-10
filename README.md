@@ -51,6 +51,42 @@ codex plugin marketplace add /path/to/ivo-skills
 claude plugin marketplace add /path/to/ivo-skills
 ```
 
+## Mods
+
+`app-runner` is a separate, Claude Code-only plugin: a mod, not a skill, so Codex
+does not load it. It adds a Start/Stop button beside the model picker in the prompt
+footer, plus `/start [profile]` and `/stop`, for any checkout that has a
+`.claude/run.json`:
+
+```json
+{
+  "profiles": [
+    {
+      "name": "Game",
+      "build": ["dotnet", "build", "Game/Game.csproj"],
+      "run": ["Game/bin/Debug/net8.0/Game.exe"],
+      "cwd": "Game/bin/Debug/net8.0"
+    }
+  ]
+}
+```
+
+Paths are relative to the session's checkout, so a worktree session runs its own
+branch. The first profile is the default. `build` is optional. The app is launched
+through PowerShell `Start-Process` so its window shows; `/stop` runs `taskkill` on
+its PID. Windows only. The app outlives the session and a mod reload; stop it first.
+
+```
+/plugin install app-runner@ivo-skills
+```
+
+Check it after editing:
+
+```
+claude plugin validate plugins/app-runner
+claude plugin test plugins/app-runner
+```
+
 ## Layout
 
 ```
