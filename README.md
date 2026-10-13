@@ -31,14 +31,14 @@ tradeoffs stay with Ivo; supported local cleanup does not need repeated approval
 ### Claude Code
 
 ```
-/plugin marketplace add <owner>/ivo-skills
+/plugin marketplace add vakisddot/ivo-skills
 /plugin install ivo@ivo-skills
 ```
 
 ### Codex
 
 ```
-codex plugin marketplace add <owner>/ivo-skills
+codex plugin marketplace add vakisddot/ivo-skills
 codex plugin add ivo@ivo-skills
 ```
 
