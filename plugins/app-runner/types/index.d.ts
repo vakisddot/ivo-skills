@@ -7,6 +7,6 @@ export type RunnerView = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'app-runner': { view: RunnerView }
+    'app-runner': { view: RunnerView; isHidden: boolean }
   }
 }

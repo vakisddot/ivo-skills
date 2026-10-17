@@ -1,7 +1,7 @@
 {
   "name": "app-runner",
   "version": "0.1.0",
-  "description": "Build and run the session's checkout from .claude/run.json with a Start/Stop button in the prompt footer, /start and /stop.",
+  "description": "Build and run the session's checkout from .claude/run.json with a Start/Stop band above the prompt, /ivo-runner-start, /ivo-runner-stop and /ivo-runner-toggle.",
   "author": { "name": "Ivo" },
   "types": "./types/index.d.ts"
 }

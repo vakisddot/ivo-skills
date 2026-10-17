@@ -14,6 +14,7 @@ const CRASH_TAIL_LINES = 15
 
 const IDLE: RunnerView = { phase: 'idle', profile: '', branch: '' }
 const view = atom({ plugin: 'app-runner', key: 'view' } as const, { ...IDLE, phase: 'off' })
+const isHidden = atom({ plugin: 'app-runner', key: 'isHidden' } as const, false)
 
 // Module state. A reload forgets it, and the app keeps running untracked: stop that one by hand.
 let running: Running | undefined
@@ -21,12 +22,21 @@ let running: Running | undefined
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'start',
+      name: 'ivo-runner-start',
       description: `Build and run this checkout (${CONFIG_PATH})`,
       argumentHint: '[profile]',
       immediate: true,
     })
-    await $.command.register({ name: 'stop', description: 'Stop the app started by /start', immediate: true })
+    await $.command.register({
+      name: 'ivo-runner-stop',
+      description: 'Stop the app started by /ivo-runner-start',
+      immediate: true,
+    })
+    await $.command.register({
+      name: 'ivo-runner-toggle',
+      description: 'Show or hide the Start/Stop band',
+      immediate: true,
+    })
 
     // Also runs on reload, which killed any child, so the view restarts from idle.
     const hasConfig = await $.fs.exists(`${await $.session.root()}/${CONFIG_PATH}`)
@@ -35,13 +45,19 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'start' }, async ($, e) => ({ text: await start($, e.args) }))
-  on('command.run', { command: 'stop' }, async $ => ({ text: await stop($) }))
+  on('command.run', { command: 'ivo-runner-start' }, async ($, e) => ({ text: await start($, e.args) }))
+  on('command.run', { command: 'ivo-runner-stop' }, async $ => ({ text: await stop($) }))
+  on('command.run', { command: 'ivo-runner-toggle' }, async $ => {
+    const isNowHidden = !(await read($, isHidden))
+    await update($, isHidden, () => isNowHidden)
 
-  // Drawn beside the mode labels in the prompt footer, next to the model picker on desktop.
-  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    return { text: isNowHidden ? 'Runner band hidden. /ivo-runner-toggle shows it again.' : 'Runner band shown.' }
+  })
+
+  // Drawn in the band above the prompt: the desktop's footer slot no longer sits beside the model picker.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const shown = await read($, view)
-    if (shown.phase === 'off') {
+    if (shown.phase === 'off' || e.props.hasSurvey || (await read($, isHidden))) {
       return next(e)
     }
 
@@ -49,7 +65,6 @@ export const register: Register = on => {
 
     return (
       <Box>
-        {await next(e)}
         {shown.phase === 'idle' && (
           <Button key="start" label="▶ Start" plain onPress={async () => $.ui.toast(await start($, ''))} />
         )}
@@ -62,6 +77,7 @@ export const register: Register = on => {
             <Button key="stop" label="■ Stop" plain onPress={async () => $.ui.toast(await stop($))} />
           </>
         )}
+        <Button key="hide" label="Hide" plain onPress={() => update($, isHidden, () => true)} />
       </Box>
     )
   })
@@ -69,7 +85,7 @@ export const register: Register = on => {
 
 async function start($: EngineInterface, args: string) {
   if (running) {
-    return `${running.profile} is already running. Use /stop first.`
+    return `${running.profile} is already running. Use /ivo-runner-stop first.`
   }
 
   const root = await $.session.root()
@@ -122,7 +138,7 @@ async function launch($: EngineInterface, root: string, profile: Profile, state:
     const branch = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd: root })
     const [exe, ...args] = profile.run
     // The host starts children with their window hidden, so launch through Start-Process to show it,
-    // print the app's PID for /stop, and pass its exit code through.
+    // print the app's PID for /ivo-runner-stop, and pass its exit code through.
     const script = [
       `$p = Start-Process -PassThru -FilePath ${quote(/[\\/]/.test(exe) ? resolve(root, exe) : exe)}`
         + ` -WorkingDirectory ${quote(profile.cwd ? resolve(root, profile.cwd) : root)}`

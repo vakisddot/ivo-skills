@@ -54,8 +54,9 @@ claude plugin marketplace add /path/to/ivo-skills
 ## Mods
 
 `app-runner` is a separate, Claude Code-only plugin: a mod, not a skill, so Codex
-does not load it. It adds a Start/Stop button beside the model picker in the prompt
-footer, plus `/start [profile]` and `/stop`, for any checkout that has a
+does not load it. It adds a Start/Stop band above the prompt, plus
+`/ivo-runner-start [profile]`, `/ivo-runner-stop` and `/ivo-runner-toggle` (show or
+hide the band; the band's Hide button does the same), for any checkout that has a
 `.claude/run.json`:
 
 ```json
@@ -73,7 +74,7 @@ footer, plus `/start [profile]` and `/stop`, for any checkout that has a
 
 Paths are relative to the session's checkout, so a worktree session runs its own
 branch. The first profile is the default. `build` is optional. The app is launched
-through PowerShell `Start-Process` so its window shows; `/stop` runs `taskkill` on
+through PowerShell `Start-Process` so its window shows; `/ivo-runner-stop` runs `taskkill` on
 its PID. Windows only. The app outlives the session and a mod reload; stop it first.
 
 ```
