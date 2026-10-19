@@ -19,6 +19,8 @@ as `ivo:<skill>` — the `ivo-` prefix lives in the namespace, not in the skill 
 | `ivo:context-check` | Reports every instruction and file auto-loaded into the session |
 | `ivo:roast-codebase` | Code review that is funny and actually useful |
 | `ivo:remove-bg-image` | Flood-fill background removal to a transparent PNG |
+| `ivo:codex` | From Claude Code: start or resume a Codex session with a focused note (login check first) |
+| `ivo:claude` | From Codex: start or resume a Claude Code session with a focused note (**untested**) |
 
 `ivo:code` guides everyday coding; `ivo:deslop` provides a deliberate cleanup pass.
 For example, ask `Use $ivo:deslop to audit my current changes` for findings without
@@ -133,4 +135,6 @@ python3 ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugin
 
 One copy of each skill serves both hosts, so skill text must not name a specific
 assistant. Refer to instruction files as "CLAUDE.md, AGENTS.md, or equivalent", and
-write "your last response" rather than naming the assistant.
+write "your last response" rather than naming the assistant. The exception is
+`ivo:codex` and `ivo:claude`, which name the assistant they talk to and say which
+host to use them from.

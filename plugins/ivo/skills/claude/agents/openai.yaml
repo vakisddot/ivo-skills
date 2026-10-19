@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claude Bridge"
+  short_description: "Send a note to a Claude Code session (for Codex, untested)"
+  default_prompt: "Use $ivo:claude to ask a saved Claude Code session a focused question."
