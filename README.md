@@ -90,6 +90,18 @@ claude plugin validate plugins/app-runner
 claude plugin test plugins/app-runner
 ```
 
+`user-tasks` is a second mod: a "Your tasks" checklist pane that stays beside the chat.
+Things Claude asks you to check or do (a test checklist, say) go there instead of
+scrolling away in the transcript; you tick them off and Claude can read what you ticked.
+Lists are per project (a worktree shares its repository's list) and survive restarts.
+Claude writes to it through one tool, `mcp__user-tasks__user_tasks` (`add`, `update`,
+`remove`, `clear`, `list`), documented in `plugins/user-tasks/skills/user-tasks`.
+`/ivo-tasks` reopens the pane if you closed it.
+
+```
+/plugin install user-tasks@ivo-skills
+```
+
 ## Layout
 
 ```

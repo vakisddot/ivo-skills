@@ -1,0 +1,7 @@
+{
+  "name": "user-tasks",
+  "version": "0.1.0",
+  "description": "An always-visible 'Your tasks' checklist pane per project: Claude adds things for you to check or do through the user_tasks tool, you tick them off, Claude reads what you ticked.",
+  "author": { "name": "Ivo" },
+  "types": "./types/index.d.ts"
+}

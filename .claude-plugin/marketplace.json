@@ -23,6 +23,15 @@
       },
       "category": "development",
       "source": "./plugins/app-runner"
+    },
+    {
+      "name": "user-tasks",
+      "description": "Claude Code mod: an always-visible \"Your tasks\" checklist pane per project. Claude adds things for you to check or do through the user_tasks tool, you tick them off, Claude reads what you ticked.",
+      "author": {
+        "name": "Ivo"
+      },
+      "category": "productivity",
+      "source": "./plugins/user-tasks"
     }
   ]
 }
