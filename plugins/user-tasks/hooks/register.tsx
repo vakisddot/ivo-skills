@@ -98,7 +98,7 @@ export const register: Register = on => {
     const groups = [...new Set(list.map(t => t.group ?? ''))]
 
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" gap={2}>
         <Box>
           <Text bold>Your tasks </Text>
           <Text dimColor>
@@ -110,7 +110,7 @@ export const register: Register = on => {
         </Box>
         {list.length === 0 && <Text dimColor>Nothing for you to check yet.</Text>}
         {groups.map(group => (
-          <Box key={`group-${group}`} flexDirection="column">
+          <Box key={`group-${group}`} flexDirection="column" gap={1}>
             {group !== '' && <Text bold>{group}</Text>}
             {list
               .filter(t => (t.group ?? '') === group)
