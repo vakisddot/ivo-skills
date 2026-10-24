@@ -29,18 +29,20 @@ box (or on his clipboard when the box is unavailable). When a message mentions "
 `list` and read item N, with its group and detail, before answering. The id, not the
 position, identifies it: ids never change while an item exists.
 
-## Attaching the reasoning to a task
+## Notes: collapsible background under a task
 
-A `title` or `detail` may contain `[label](prev)`. The mod keeps a copy of the text you wrote
-just before this call (up to 2000 characters), and Ivo clicks `label` to read it under the
-task in the pane (one passage open at a time per task; opening another link of the same task closes it), then clicks again to close it. Titles and details can both hold these links. The chat itself cannot be scrolled to from
-a mod, so the copy is the reference.
+A task may carry `notes`: `[{ label, text }]`, with `text` in markdown (up to 2000 characters).
+Each note shows as a small `▸ label` link under the task's description. Ivo clicks it to open
+the text in a framed block below the task, and clicks the block's header (or the label) to
+close it. One note is open at a time per task.
 
-- Write the explanation as a normal paragraph before the call, then link it from the task
-  it explains. Several tasks in one call share that same paragraph.
-- Use it rarely, only where the passage explains why the task exists or what to look for.
-- If no reply text was available, the call's result says so and the label stays plain text.
-- `list` shows these links as `label ↗`.
+- Use notes for background that would otherwise be pasted into chat: why the task exists,
+  steps to reproduce, expected results, what to compare. Keep the title and `detail` short.
+- Give each note a short label ("Why this matters", "Steps"). Several notes per task are fine.
+- `add` takes `notes` per task. `update` with `notes` replaces the task's notes, and
+  `notes: []` removes them. Ticked tasks hide their notes.
+- `list` shows each task's note labels (`[notes: Why this matters, Steps]`) but not the text:
+  you wrote it, so you already know it.
 
 ## How to use it
 

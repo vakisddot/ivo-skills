@@ -1,4 +1,7 @@
-/** A passage of the chat kept with a task, opened by the link `[label](https://user-tasks.invalid/<id>)`. */
+/** Collapsible background Claude attached to a task, opened from its label in the pane. */
+export type Note = { id: string; label: string; text: string }
+
+/** What an earlier version kept per task: a chat passage, linked from the task's text. Read once, as a note. */
 export type Ref = { id: string; text: string }
 
 /** One thing Claude asked the person to check or do. */
@@ -8,12 +11,13 @@ export type Task = {
   detail?: string
   group?: string
   done: boolean
+  notes?: Note[]
   refs?: Ref[]
 }
 
 declare module 'claude-code' {
   interface PluginState {
-    /** The session's project list, mirrored from `$.store`, and whether the pane hides the ticked ones. */
-    'user-tasks': { tasks: Task[]; isHidingDone: boolean; openRefs: string[] }
+    /** The session's project list, mirrored from `$.store`, whether the pane hides the ticked ones, and the open notes. */
+    'user-tasks': { tasks: Task[]; isHidingDone: boolean; openNotes: string[] }
   }
 }

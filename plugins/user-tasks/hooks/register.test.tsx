@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import type { Engine, MockClock } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 const TOOL = 'mcp__user-tasks__user_tasks'
@@ -46,15 +46,6 @@ const engine = (on: On, store: Record<string, unknown> = {}) => {
   return clock
 }
 
-type LinkTarget = { key: string; link?: { href: string } }
-
-/** Presses a passage link and lets its slide finish, as the clock is the test's. */
-const pressLink = async (ui: { press: (target: LinkTarget) => Promise<unknown> }, clock: MockClock, target: LinkTarget) => {
-  await ui.press(target)
-  await clock.settle()
-  await clock.advance(500)
-}
-
 const call = ($: Engine, input: object) =>
   $.tool.call({ tool: TOOL, ...input } as never).then(r => (r as { result?: string }).result ?? (r as { deny?: string }).deny)
 
@@ -76,7 +67,7 @@ test('Claude adds grouped tasks, Ivo ticks one, Claude reads it back', async ($,
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: /0\/3 done/ })).toBeDefined()
     expect(await ui.find({ type: 'Markdown', text: /VERIFY LOGIN FIX/ })).toBeDefined()
-    expect(await ui.find({ type: 'Markdown', text: /redirects to the home page/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /redirects to the home page/ })).toBeDefined()
     await ui.unmount()
   }
 
@@ -175,7 +166,7 @@ test('ticked tasks are struck through and the filter hides them', async ($, on) 
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ key: 'filter' })).toBeDefined()
     expect((await ui.find({ type: 'Text', text: /^Check login$/ }))?.props?.strikethrough).toBe(true)
-    expect((await ui.find({ key: 'title-2' }))?.props?.text).toBe('**Check logout**')
+    expect((await ui.find({ type: 'Text', text: /^Check logout$/ }))?.props?.strikethrough).toBe(false)
     expect((await ui.find({ type: 'Text', text: /redirects/ }))?.props?.strikethrough).toBe(true)
     await ui.unmount()
   }
@@ -226,137 +217,114 @@ test('clicking #N puts "Regarding user task #N, " in the prompt box, or on the c
   await ui.unmount()
 })
 
-const REPLY = {
-  plugin: 'user-tasks',
-  component: 'AssistantMessage',
-  requestId: 'msg-1',
-  props: { text: 'Login redirects were rewritten, so check both paths.', isFirstOfReply: true },
-} as const
+const NOTES = [
+  { label: 'Why this matters', text: 'The redirect changed, so check **both** paths.' },
+  { label: 'Steps', text: '1. Sign in\n2. Sign out' },
+]
 
-test('[label](prev) keeps the reply text and opens it under the task', async ($, on) => {
+test('a task shows its notes as labels; one opens at a time per task and closes from its header', async ($, on) => {
   const clock = engine(on)
-
-  on('ui.render', ($, e) => {
-    const { Text } = $.ui.resolve(e)
-
-    return <Text>reply</Text>
-  })
   await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
-
-  const reply = await $.ui.mount({ ...REPLY, surface: 'desktop' })
-  await reply.unmount()
   const added = await call($, {
     action: 'add',
-    tasks: [{ title: 'Check login', detail: 'Why: see [the reasoning](prev) first' }, { title: 'Check logout' }],
+    tasks: [
+      { title: 'Check login', notes: NOTES },
+      { title: 'Check logout', notes: [{ label: 'Background', text: 'Logout clears the session.' }] },
+    ],
   })
   expect(added).toBe('Added 2: #1, #2')
 
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ key: 'detail-1' })).toBeDefined()
-    expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeUndefined()
+    expect((await ui.find({ key: 'note-1-0' }))?.text).toBe('▸ Why this matters')
+    expect((await ui.find({ key: 'note-1-1' }))?.text).toBe('▸ Steps')
+    expect(await ui.find({ type: 'Markdown', text: /check \*\*both\*\* paths/ })).toBeUndefined()
     await ui.unmount()
   }
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const link = { href: 'https://user-tasks.invalid/1-0' }
-  await pressLink(ui, clock, { key: 'detail-1', link })
-  expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeDefined()
-  // The link closes it again.
-  await pressLink(ui, clock, { key: 'detail-1', link })
-  expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeUndefined()
-
-  expect(await call($, { action: 'list' })).toContain('Why: see the reasoning ↗ first')
-
-  // So does the header button inside the opened passage.
-  await pressLink(ui, clock, { key: 'detail-1', link })
-  await ui.press({ key: 'close-1-0' })
-  await clock.settle()
-  await clock.advance(500)
-  expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeUndefined()
-
-  await pressLink(ui, clock, { key: 'detail-1', link })
-  await call($, { action: 'update', id: 1, done: true })
-  expect(await ui.find({ key: 'detail-1' })).toBeUndefined()
-  expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /Why: see the reasoning first/ })).toBeDefined()
-  await ui.unmount()
-})
-
-test('a (prev) link with no reply text is left as the plain label', async ($, on) => {
-  engine(on)
-  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
-
-  const added = await call($, { action: 'add', tasks: [{ title: 'Check login', detail: 'See [why](prev)' }] })
-  expect(added).toContain('1 (prev) link(s) left as plain text')
-  expect(await call($, { action: 'list' })).toContain('See why')
-
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ key: 'detail-1' }))?.props?.text).toBe('See why')
-  await ui.unmount()
-})
-
-test('one passage is open per task, and titles can hold links too', async ($, on) => {
-  const clock = engine(on)
-  on('ui.render', ($, e) => {
-    const { Text } = $.ui.resolve(e)
-
-    return <Text>reply</Text>
-  })
-  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
-  const say = async (text: string) => {
-    const reply = await $.ui.mount({ ...REPLY, requestId: text, props: { ...REPLY.props, text }, surface: 'desktop' })
-    await reply.unmount()
+  const open = async (key: string) => {
+    await ui.press({ key })
+    await clock.settle()
+    await clock.advance(500)
   }
 
-  await say('First reasoning.')
-  await call($, { action: 'add', tasks: [{ title: 'Check [login](prev)' }] })
-  await say('Third reasoning.')
-  await call($, { action: 'add', tasks: [{ title: 'Other [task](prev)' }] })
-  await say('Second reasoning.')
-  await call($, { action: 'update', id: 1, detail: 'And [logout](prev)' })
+  await open('note-1-0')
+  expect(await ui.find({ type: 'Markdown', text: /check \*\*both\*\* paths/ })).toBeDefined()
+  expect((await ui.find({ key: 'note-1-0' }))?.text).toBe('▾ Why this matters')
 
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ key: 'title-1' }))?.props?.text).toBe('**Check [**login**](https://user-tasks.invalid/1-0)**')
-  expect(await ui.find({ key: 'detail-1' })).toBeDefined()
+  // Another task's note opens alongside; a second note of the same task replaces the first.
+  await open('note-2-0')
+  expect(await ui.find({ type: 'Markdown', text: /Logout clears/ })).toBeDefined()
+  expect(await ui.find({ type: 'Markdown', text: /check \*\*both\*\* paths/ })).toBeDefined()
+  await open('note-1-1')
+  expect(await ui.find({ type: 'Markdown', text: /Sign in/ })).toBeDefined()
+  expect(await ui.find({ type: 'Markdown', text: /check \*\*both\*\* paths/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Markdown', text: /Logout clears/ })).toBeDefined()
 
-  await pressLink(ui, clock, { key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })
-  expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeDefined()
+  // The header closes it, and so does its label.
+  await open('close-1-1')
+  expect(await ui.find({ type: 'Markdown', text: /Sign in/ })).toBeUndefined()
+  await open('note-2-0')
+  expect(await ui.find({ type: 'Markdown', text: /Logout clears/ })).toBeUndefined()
 
-  // The other task's passage opens without closing this one's.
-  await pressLink(ui, clock, { key: 'title-2', link: { href: 'https://user-tasks.invalid/2-0' } })
-  expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeDefined()
-  expect(await ui.find({ type: 'Markdown', text: /Third reasoning/ })).toBeDefined()
-
-  // A second link of the same task closes the first, and leaves the other task alone.
-  await pressLink(ui, clock, { key: 'detail-1', link: { href: 'https://user-tasks.invalid/1-1' } })
-  expect(await ui.find({ type: 'Markdown', text: /Second reasoning/ })).toBeDefined()
-  expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Markdown', text: /Third reasoning/ })).toBeDefined()
-  await pressLink(ui, clock, { key: 'detail-1', link: { href: 'https://user-tasks.invalid/1-1' } })
-  expect(await ui.find({ type: 'Markdown', text: /Second reasoning/ })).toBeUndefined()
-
-  await clock.settle()
-  await clock.advance(200)
+  // A ticked task hides its notes.
+  await open('note-1-0')
+  await call($, { action: 'update', id: 1, done: true })
+  expect(await ui.find({ key: 'note-1-0' })).toBeUndefined()
+  expect(await ui.find({ type: 'Markdown', text: /check \*\*both\*\* paths/ })).toBeUndefined()
   await ui.unmount()
 })
 
-test('a passage opened from a title-only task shows under it', async ($, on) => {
-  const clock = engine(on)
-  on('ui.render', ($, e) => {
-    const { Text } = $.ui.resolve(e)
+test('notes are listed by label, replaced on update, cleared with [] and capped', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+  await call($, { action: 'add', tasks: [{ title: 'Check login', notes: [...NOTES, { text: 'x'.repeat(3000) }, { label: 'blank', text: '  ' }] }] })
 
-    return <Text>reply</Text>
+  const listed = await call($, { action: 'list' })
+  expect(listed).toContain('[notes: Why this matters, Steps, More]')
+
+  const stored = await call($, { action: 'update', id: 1, notes: [{ label: 'Only', text: 'One note.' }] })
+  expect(stored).toBe('Updated #1')
+  expect(await call($, { action: 'list' })).toContain('[notes: Only]')
+
+  await call($, { action: 'update', id: 1, notes: [] })
+  expect(await call($, { action: 'list' })).not.toContain('[notes:')
+
+  await call($, { action: 'update', id: 1, notes: [{ text: 'y'.repeat(3000) }] })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ key: 'note-1-0' }))?.text).toBe('▸ More')
+  await ui.unmount()
+})
+
+test('a task saved with a chat passage reads as a note', async ($, on) => {
+  const clock = engine(on, {
+    'list:c:/repo': {
+      nextId: 2,
+      tasks: [
+        {
+          id: 1,
+          title: 'Check [login](https://user-tasks.invalid/1-0)',
+          detail: 'See [why](https://user-tasks.invalid/1-1)',
+          done: false,
+          refs: [
+            { id: '1-0', text: 'First passage.' },
+            { id: '1-1', text: 'Second passage.' },
+          ],
+        },
+      ],
+    },
   })
   await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
-  const reply = await $.ui.mount({ ...REPLY, surface: 'desktop' })
-  await reply.unmount()
-  await call($, { action: 'add', tasks: [{ title: 'Check [login](prev)' }] })
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })
-  expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Check login$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^See why$/ })).toBeDefined()
+  expect((await ui.find({ key: 'note-1-0' }))?.text).toBe('▸ More')
+  expect((await ui.find({ key: 'note-1-1' }))?.text).toBe('▸ More 2')
+  await ui.press({ key: 'note-1-1' })
   await clock.settle()
   await clock.advance(500)
+  expect(await ui.find({ type: 'Markdown', text: /Second passage/ })).toBeDefined()
   await ui.unmount()
 })

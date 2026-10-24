@@ -100,8 +100,8 @@ Claude writes to it through one tool, `mcp__user-tasks__user_tasks` (`add`, `upd
 `/ivo-tasks` reopens the pane if you closed it. Ticked items are struck through;
 Hide done and Clear done tidy the list. Clicking a task's `#N` puts `Regarding user task #N, ` in
 your prompt, so Claude knows which one you mean.
-A task's title or detail can also hold a link Claude adds to a passage it wrote just before,
-which opens that text under the task when clicked.
+A task can also carry notes: collapsible background Claude writes, shown as `▸ label` links
+under the description that open the text in a framed block.
 
 ![The Your tasks pane](docs/user-tasks.png)
 
