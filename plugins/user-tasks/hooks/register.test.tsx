@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, MockClock } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 const TOOL = 'mcp__user-tasks__user_tasks'
@@ -44,6 +44,15 @@ const engine = (on: On, store: Record<string, unknown> = {}) => {
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
   return clock
+}
+
+type LinkTarget = { key: string; link?: { href: string } }
+
+/** Presses a passage link and lets its slide finish, as the clock is the test's. */
+const pressLink = async (ui: { press: (target: LinkTarget) => Promise<unknown> }, clock: MockClock, target: LinkTarget) => {
+  await ui.press(target)
+  await clock.settle()
+  await clock.advance(500)
 }
 
 const call = ($: Engine, input: object) =>
@@ -251,18 +260,22 @@ test('[label](prev) keeps the reply text and opens it under the task', async ($,
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const link = { href: 'https://user-tasks.invalid/1-0' }
-  await ui.press({ key: 'detail-1', link })
+  await pressLink(ui, clock, { key: 'detail-1', link })
   expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeDefined()
-  await clock.settle()
-  await clock.advance(200)
-  await ui.press({ key: 'detail-1', link })
+  // The link closes it again.
+  await pressLink(ui, clock, { key: 'detail-1', link })
   expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeUndefined()
 
   expect(await call($, { action: 'list' })).toContain('Why: see the reasoning ↗ first')
 
-  await ui.press({ key: 'detail-1', link })
+  // So does the header button inside the opened passage.
+  await pressLink(ui, clock, { key: 'detail-1', link })
+  await ui.press({ key: 'close-1-0' })
   await clock.settle()
-  await clock.advance(200)
+  await clock.advance(500)
+  expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeUndefined()
+
+  await pressLink(ui, clock, { key: 'detail-1', link })
   await call($, { action: 'update', id: 1, done: true })
   expect(await ui.find({ key: 'detail-1' })).toBeUndefined()
   expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeUndefined()
@@ -307,20 +320,20 @@ test('one passage is open per task, and titles can hold links too', async ($, on
   expect((await ui.find({ key: 'title-1' }))?.props?.text).toBe('**Check [**login**](https://user-tasks.invalid/1-0)**')
   expect(await ui.find({ key: 'detail-1' })).toBeDefined()
 
-  await ui.press({ key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })
+  await pressLink(ui, clock, { key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })
   expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeDefined()
 
   // The other task's passage opens without closing this one's.
-  await ui.press({ key: 'title-2', link: { href: 'https://user-tasks.invalid/2-0' } })
+  await pressLink(ui, clock, { key: 'title-2', link: { href: 'https://user-tasks.invalid/2-0' } })
   expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeDefined()
   expect(await ui.find({ type: 'Markdown', text: /Third reasoning/ })).toBeDefined()
 
   // A second link of the same task closes the first, and leaves the other task alone.
-  await ui.press({ key: 'detail-1', link: { href: 'https://user-tasks.invalid/1-1' } })
+  await pressLink(ui, clock, { key: 'detail-1', link: { href: 'https://user-tasks.invalid/1-1' } })
   expect(await ui.find({ type: 'Markdown', text: /Second reasoning/ })).toBeDefined()
   expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeUndefined()
   expect(await ui.find({ type: 'Markdown', text: /Third reasoning/ })).toBeDefined()
-  await ui.press({ key: 'detail-1', link: { href: 'https://user-tasks.invalid/1-1' } })
+  await pressLink(ui, clock, { key: 'detail-1', link: { href: 'https://user-tasks.invalid/1-1' } })
   expect(await ui.find({ type: 'Markdown', text: /Second reasoning/ })).toBeUndefined()
 
   await clock.settle()
@@ -343,7 +356,10 @@ test('a passage opened from a title-only task shows under it', async ($, on) => 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })
   expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeDefined()
+  // It slides open: the frame has a height while the animation runs, and none once it is done.
+  expect(typeof (await ui.find({ key: 'passage-1-0' }))?.props?.height).toBe('number')
   await clock.settle()
-  await clock.advance(200)
+  await clock.advance(500)
+  expect((await ui.find({ key: 'passage-1-0' }))?.props?.height).toBeUndefined()
   await ui.unmount()
 })

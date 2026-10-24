@@ -24,19 +24,24 @@ const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
 const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
 /** The passages open now, by ref id: at most one per task (ref ids are `<task id>-<n>`). */
 const openRefs = atom({ plugin: 'user-tasks', key: 'openRefs' } as const, [])
+/** A passage mid-way through opening or closing: its ref id and the rows it shows now. */
+const anim = atom({ plugin: 'user-tasks', key: 'anim' } as const, null)
 
 /** Claude writes `[label](prev)`; it is stored as `[label](REF_HOST<ref id>)`, the ref holding a copy of the passage. */
 const REF_HOST = 'https://user-tasks.invalid/'
 const REF_MARK = /\[([^\]]+)\]\(prev\)/g
 const REF_LINK = /\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/[^)\s]+\)/g
 const MAX_PASSAGE = 2000
-/** The bar down the left of an opened passage, a mid grey that shows on dark and light. */
-const PASSAGE_BAR = '#6b7280'
+const ANIM_STEPS = 6
+const ANIM_STEP_MS = 30
+const MAX_PASSAGE_ROWS = 40
 
 // Module state. A reload re-runs session.start, which sets it again.
 let current = ''
 /** The text of the latest reply block drawn this turn: what `(prev)` keeps. */
 let lastMessage = ''
+let bodyColumns = 60
+let animToken = 0
 let queue: Promise<unknown> = Promise.resolve()
 
 const SCHEMA = {
@@ -130,6 +135,8 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Markdown, Text } = $.ui.resolve(e)
     const opened = await read($, openRefs)
+    const moving = await read($, anim)
+    bodyColumns = e.props.bodyColumns
     const words = (key: string, value: string, isDone: boolean, isTitle = false) =>
       isDone ? (
         <Text bold={isTitle} dimColor strikethrough>
@@ -207,10 +214,21 @@ export const register: Register = on => {
                     (t.refs ?? [])
                       .filter(r => opened.includes(r.id))
                       .map(r => (
-                        <Box key={`passage-${r.id}`} paddingLeft={2} marginTop={1}>
-                          <Box width={1} flexShrink={0} backgroundColor={PASSAGE_BAR} />
-                          <Box flexDirection="column" paddingX={1} flexShrink={1}>
-                            <Text dimColor>From the chat (click its link again to close)</Text>
+                        <Box
+                          key={`passage-${r.id}`}
+                          flexDirection="column"
+                          paddingLeft={2}
+                          marginTop={1}
+                          {...(moving?.id === r.id ? { height: moving.height, overflow: 'hidden' as const } : {})}
+                        >
+                          <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+                            <Button
+                              key={`close-${r.id}`}
+                              label="▾ From the chat · click to close"
+                              plain
+                              dimColor
+                              onPress={() => void togglePassage($, r.id)}
+                            />
                             <Markdown text={r.text} dimColor />
                           </Box>
                         </Box>
@@ -350,18 +368,42 @@ function withPassage(text: string, taskId: number, refs: Ref[], passage: string,
 const bold = (text: string) => `**${text.replace(REF_LINK, link => link.replace('[', '[**').replace('](', '**]('))}**`
 const plain = (text: string) => text.replace(REF_LINK, '$1')
 const marked = (text: string) => text.replace(REF_LINK, '$1 ↗')
-/** Opens or closes a kept passage, closing any other of the same task; an opened one is scrolled into view, since it lands below the task. */
-async function togglePassage($: EngineInterface, id: string) {
-  const isOpening = !(await read($, openRefs)).includes(id)
-  await update($, openRefs, ids => {
-    const others = ids.filter(one => one.split('-')[0] !== id.split('-')[0])
+/** The rows an opened passage takes: its text wrapped to the pane, a header line and the frame. */
+function passageRows(text: string) {
+  const width = Math.max(10, bodyColumns - 8)
+  const rows = text.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / width)), 0)
 
-    return isOpening ? [...others, id] : others
-  })
-  if (isOpening) {
-    await $.clock.sleep(100)
-    await $.ui.scroll({ to: { key: `passage-${id}` }, in: PANE, block: 'nearest' }).catch(() => undefined)
+  return Math.min(MAX_PASSAGE_ROWS, rows + 3)
+}
+
+/** Opens or closes a kept passage, closing any other of the same task; both slide over a few frames. */
+async function togglePassage($: EngineInterface, id: string) {
+  const token = ++animToken
+  const text = (await read($, tasks)).flatMap(t => t.refs ?? []).find(r => r.id === id)?.text ?? ''
+  const rows = passageRows(text)
+  const frame = async (step: number) => {
+    await update($, anim, () => ({ id, height: Math.max(1, Math.round((rows * step) / ANIM_STEPS)) }))
+    await $.clock.sleep(ANIM_STEP_MS)
+
+    return token === animToken
   }
+
+  if ((await read($, openRefs)).includes(id)) {
+    for (let step = ANIM_STEPS - 1; step >= 1; step--) {
+      if (!(await frame(step))) return
+    }
+    await update($, openRefs, ids => ids.filter(one => one !== id))
+    await update($, anim, () => null)
+
+    return
+  }
+
+  await update($, openRefs, ids => [...ids.filter(one => one.split('-')[0] !== id.split('-')[0]), id])
+  for (let step = 1; step < ANIM_STEPS; step++) {
+    if (!(await frame(step))) return
+  }
+  await update($, anim, () => null)
+  await $.ui.scroll({ to: { key: `passage-${id}` }, in: PANE, block: 'nearest' }).catch(() => undefined)
 }
 
 const toggle = (list: Task[], id: number) => list.map(t => (t.id === id ? { ...t, done: !t.done } : t))
