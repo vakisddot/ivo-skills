@@ -66,7 +66,7 @@ test('Claude adds grouped tasks, Ivo ticks one, Claude reads it back', async ($,
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: /0\/3 done/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /Verify login fix/ })).toBeDefined()
+    expect(await ui.find({ type: 'Markdown', text: /Verify login fix/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /redirects to the home page/ })).toBeDefined()
     await ui.unmount()
   }
@@ -280,5 +280,39 @@ test('a (prev) link with no reply text is left as the plain label', async ($, on
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ key: 'detail-1' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('one passage is open at a time, and titles can hold links too', async ($, on) => {
+  const clock = engine(on)
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return <Text>reply</Text>
+  })
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+  const say = async (text: string) => {
+    const reply = await $.ui.mount({ ...REPLY, requestId: text, props: { ...REPLY.props, text }, surface: 'desktop' })
+    await reply.unmount()
+  }
+
+  await say('First reasoning.')
+  await call($, { action: 'add', tasks: [{ title: 'Check [login](prev)' }] })
+  await say('Second reasoning.')
+  await call($, { action: 'update', id: 1, detail: 'And [logout](prev)' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ key: 'title-1' })).toBeDefined()
+  expect(await ui.find({ key: 'detail-1' })).toBeDefined()
+
+  await ui.press({ key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })
+  expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeDefined()
+
+  await ui.press({ key: 'detail-1', link: { href: 'https://user-tasks.invalid/1-1' } })
+  expect(await ui.find({ type: 'Markdown', text: /Second reasoning/ })).toBeDefined()
+  expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeUndefined()
+
+  await clock.settle()
+  await clock.advance(200)
   await ui.unmount()
 })

@@ -22,7 +22,8 @@ const POLL_MS = 2000
 
 const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
 const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
-const openRefs = atom({ plugin: 'user-tasks', key: 'openRefs' } as const, [])
+/** The one passage open under a task, by ref id; '' for none. */
+const openRef = atom({ plugin: 'user-tasks', key: 'openRef' } as const, '')
 
 /** Claude writes `[label](prev)`; it is stored as `[label](REF_HOST<ref id>)`, the ref holding a copy of the passage. */
 const REF_HOST = 'https://user-tasks.invalid/'
@@ -46,7 +47,10 @@ const SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Short imperative title.' },
+          title: {
+            type: 'string',
+            description: 'Short imperative title. May hold a [label](prev) link like detail.',
+          },
           detail: {
             type: 'string',
             description:
@@ -123,18 +127,22 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Markdown, Text } = $.ui.resolve(e)
-    const opened = await read($, openRefs)
-    const words = (key: string, value: string, isDone: boolean) =>
+    const opened = await read($, openRef)
+    const words = (key: string, value: string, isDone: boolean, isTitle = false) =>
       !value.includes(REF_HOST) ? (
-        <Text dimColor={isDone} strikethrough={isDone}>
+        <Text bold={isTitle} dimColor={isDone} strikethrough={isDone}>
           {value}
         </Text>
       ) : isDone ? (
-        <Text dimColor strikethrough>
+        <Text bold={isTitle} dimColor strikethrough>
           {plain(value)}
         </Text>
       ) : (
-        <Markdown key={key} text={value} onLinkPress={link => void togglePassage($, link.href.slice(REF_HOST.length))} />
+        <Markdown
+          key={key}
+          text={isTitle ? `**${value}**` : value}
+          onLinkPress={link => void togglePassage($, link.href.slice(REF_HOST.length))}
+        />
       )
     const all = await read($, tasks)
     const isHiding = await read($, isHidingDone)
@@ -166,7 +174,7 @@ export const register: Register = on => {
         {all.length > 0 && list.length === 0 && <Text dimColor>All done. Show done lists them.</Text>}
         {groups.map(group => (
           <Box key={`group-${group}`} flexDirection="column" gap={1}>
-            {group !== '' && <Text bold>{group}</Text>}
+            {group !== '' && <Markdown text={`## ${group}`} />}
             {list
               .filter(t => (t.group ?? '') === group)
               .map(t => (
@@ -182,7 +190,7 @@ export const register: Register = on => {
                       />
                     </Box>
                     <Box flexGrow={1} flexShrink={1}>
-                      {words(`title-${t.id}`, t.title, t.done)}
+                      {words(`title-${t.id}`, t.title, t.done, true)}
                     </Box>
                     <Box flexShrink={0} paddingLeft={1}>
                       <Button
@@ -199,9 +207,9 @@ export const register: Register = on => {
                       {words(`detail-${t.id}`, t.detail, t.done)}
                   {!t.done &&
                     (t.refs ?? [])
-                      .filter(r => opened.includes(r.id))
+                      .filter(r => r.id === opened)
                       .map(r => (
-                        <Box key={`passage-${r.id}`} flexDirection="column" paddingLeft={2}>
+                        <Box key={`passage-${r.id}`} flexDirection="column" paddingLeft={2} width="100%">
                           <Text dimColor>From the chat (click its link again to close):</Text>
                           <Markdown text={r.text} dimColor />
                         </Box>
@@ -340,16 +348,15 @@ function withPassage(text: string, taskId: number, refs: Ref[], passage: string,
 }
 const plain = (text: string) => text.replace(REF_LINK, '$1')
 const marked = (text: string) => text.replace(REF_LINK, '$1 ↗')
-/** Opens or closes a kept passage; an opened one is scrolled into view, since it lands below the task. */
+/** Opens or closes a kept passage, closing any other; an opened one is scrolled into view, since it lands below the task. */
 async function togglePassage($: EngineInterface, id: string) {
-  const isOpening = !(await read($, openRefs)).includes(id)
-  await update($, openRefs, ids => toggleId(ids, id))
+  const isOpening = (await read($, openRef)) !== id
+  await update($, openRef, () => (isOpening ? id : ''))
   if (isOpening) {
     await $.clock.sleep(100)
     await $.ui.scroll({ to: { key: `passage-${id}` }, in: PANE, block: 'nearest' }).catch(() => undefined)
   }
 }
-const toggleId = (ids: string[], id: string) => (ids.includes(id) ? ids.filter(one => one !== id) : [...ids, id])
 
 const toggle = (list: Task[], id: number) => list.map(t => (t.id === id ? { ...t, done: !t.done } : t))
 const clearDone = (list: Task[]) => list.filter(t => !t.done)
