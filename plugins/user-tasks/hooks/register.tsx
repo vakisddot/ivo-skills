@@ -190,13 +190,22 @@ export const register: Register = on => {
                         .map(n => (
                           <Box key={`block-${n.id}`} flexDirection="column" paddingLeft={2} marginTop={1}>
                             <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
-                              <Button
-                                key={`close-${n.id}`}
-                                label={`▾ ${boldLetters(n.label)}`}
-                                plain
-                                dimColor
-                                onPress={() => void toggleNote($, n.id)}
-                              />
+                              <Box>
+                                <Box flexGrow={1} flexShrink={1}>
+                                  <Text bold dimColor>
+                                    {n.label}
+                                  </Text>
+                                </Box>
+                                <Box flexShrink={0} paddingLeft={1}>
+                                  <Button
+                                    key={`close-${n.id}`}
+                                    label="✕"
+                                    plain
+                                    dimColor
+                                    onPress={() => void toggleNote($, n.id)}
+                                  />
+                                </Box>
+                              </Box>
                               <Markdown text={n.text} dimColor />
                             </Box>
                           </Box>
@@ -326,18 +335,6 @@ function withNotes(text: string, taskId: number, notes: Note[]) {
     return `[${label}](${REF_HOST}${id})`
   })
 }
-/** A button label cannot be styled, so its letters and digits are the mathematical bold forms of themselves. */
-const boldLetters = (text: string) =>
-  [...text]
-    .map(c => {
-      const code = c.codePointAt(0) ?? 0
-      if (code >= 65 && code <= 90) return String.fromCodePoint(0x1d5d4 + code - 65)
-      if (code >= 97 && code <= 122) return String.fromCodePoint(0x1d5ee + code - 97)
-      if (code >= 48 && code <= 57) return String.fromCodePoint(0x1d7ec + code - 48)
-
-      return c
-    })
-    .join('')
 /** A title in bold, its link labels too, which markdown would otherwise leave regular. */
 const bold = (text: string) => `**${text.replace(NOTE_LINK, link => link.replace('[', '[**').replace('](', '**]('))}**`
 const plain = (text: string) => text.replace(NOTE_LINK, '$1')
