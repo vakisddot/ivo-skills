@@ -166,7 +166,7 @@ test('ticked tasks are struck through and the filter hides them', async ($, on) 
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ key: 'filter' })).toBeDefined()
     expect((await ui.find({ type: 'Text', text: /^Check login$/ }))?.props?.strikethrough).toBe(true)
-    expect(await ui.find({ key: 'title-2' })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: /^Check logout$/ }))?.props?.strikethrough).toBe(false)
     expect((await ui.find({ type: 'Text', text: /redirects/ }))?.props?.strikethrough).toBe(true)
     await ui.unmount()
   }
@@ -181,5 +181,38 @@ test('ticked tasks are struck through and the filter hides them', async ($, on) 
   expect(await ui.find({ type: 'Text', text: /All done/ })).toBeDefined()
   await ui.press({ key: 'filter' })
   expect(await ui.find({ key: 'task-1' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('clicking #N puts "Regarding user task #N, " in the prompt box, or on the clipboard', async ($, on) => {
+  engine(on)
+  let draft = { text: 'see', cursor: 3 }
+  let isBoxOpen = true
+  const filled: string[] = []
+  const copied: string[] = []
+  on('prompt.read', () => ({ value: draft }))
+  on('prompt.fill', (_, e) => {
+    if (!isBoxOpen) return { isFilled: false, refusal: 'dialog' as const }
+    filled.push(e.text)
+    return { isFilled: true }
+  })
+  on('ui.copy', (_, e) => {
+    copied.push(e.text)
+    return { value: { isCopied: true as const } }
+  })
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+  await call($, { action: 'add', tasks: [{ title: 'Check login' }, { title: 'Check logout' }] })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'ref-2' })
+  expect(filled).toEqual([' Regarding user task #2, '])
+
+  draft = { text: '', cursor: 0 }
+  await ui.press({ key: 'ref-1' })
+  expect(filled[1]).toBe('Regarding user task #1, ')
+
+  isBoxOpen = false
+  await ui.press({ key: 'ref-1' })
+  expect(copied).toEqual(['Regarding user task #1,'])
   await ui.unmount()
 })

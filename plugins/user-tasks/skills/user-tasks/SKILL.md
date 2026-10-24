@@ -22,6 +22,13 @@ Add `project` (a folder path) to any call to write to another project's list. By
 default it is this session's folder; a worktree resolves to its main repository, so a
 branch worktree shares the repo's list.
 
+## When Ivo refers to a task
+
+Every item shows its id as `#N` in the pane; clicking it puts `Regarding user task #N, ` in his prompt
+box (or on his clipboard when the box is unavailable). When a message mentions "user task #N",
+`list` and read item N, with its group and detail, before answering. The id, not the
+position, identifies it: ids never change while an item exists.
+
 ## How to use it
 
 - Write one short imperative `title` ("Open Settings and toggle dark mode") and put

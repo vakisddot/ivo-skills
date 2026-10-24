@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 
 import type { Task } from '../types'
 
@@ -65,7 +65,8 @@ export const register: Register = on => {
         + 'Put every checklist you hand Ivo (things to test, check or do) here instead of only in chat. '
         + 'Actions: add {tasks:[{title,detail?,group?}]}, update {id,title?,detail?,group?,done?}, remove {id}, '
         + 'clear {scope?:"done"|"all",group?}, list {group?} (returns what Ivo has ticked). '
-        + 'Optional project: folder path of another project.',
+        + 'Optional project: folder path of another project. '
+        + 'When Ivo mentions "user task #N" (e.g. "Regarding user task #N, ...") he means the item with id N in his list: list it to read what he refers to.',
       inputSchema: SCHEMA,
       isDeferred: false,
     })
@@ -129,26 +130,30 @@ export const register: Register = on => {
               .filter(t => (t.group ?? '') === group)
               .map(t => (
                 <Box key={`row-${t.id}`} flexDirection="column">
-                  <Box gap={1}>
-                    <Button
-                      key={`task-${t.id}`}
-                      label={t.done ? '☑' : '☐'}
-                      plain
-                      dimColor={t.done}
-                      onPress={() => void change($, current, ts => toggle(ts, t.id))}
-                    />
-                    {t.done ? (
-                      <Text dimColor strikethrough>
-                        {t.title}
-                      </Text>
-                    ) : (
+                  <Box>
+                    <Box flexShrink={0}>
                       <Button
-                        key={`title-${t.id}`}
-                        label={t.title}
+                        key={`task-${t.id}`}
+                        label={t.done ? '☑' : '☐'}
                         plain
+                        dimColor={t.done}
                         onPress={() => void change($, current, ts => toggle(ts, t.id))}
                       />
-                    )}
+                    </Box>
+                    <Box flexGrow={1} flexShrink={1}>
+                      <Text dimColor={t.done} strikethrough={t.done}>
+                        {t.title}
+                      </Text>
+                    </Box>
+                    <Box flexShrink={0} paddingLeft={1}>
+                      <Button
+                        key={`ref-${t.id}`}
+                        label={`↩ #${t.id}`}
+                        plain
+                        dimColor
+                        onPress={press => void referTo($, t.id, press.surface)}
+                      />
+                    </Box>
                   </Box>
                   {t.detail && (
                     <Box paddingLeft={2}>
@@ -164,6 +169,18 @@ export const register: Register = on => {
       </Box>
     )
   })
+}
+
+/** Puts "Regarding user task #N, " in the prompt box at the cursor; without a box, on the clipboard. */
+async function referTo($: EngineInterface, id: number, surface: RenderSurface) {
+  const { text, cursor } = await $.prompt.read()
+  const mention = `Regarding user task #${id}, `
+  const needsSpace = cursor > 0 && !/\s/.test(text[cursor - 1] ?? ' ')
+  const filled = await $.prompt.fill({ text: `${needsSpace ? ' ' : ''}${mention}`, mode: 'insert' })
+  if (!filled.isFilled) {
+    const copied = await $.ui.copy({ text: mention.trimEnd(), surface })
+    $.ui.toast(copied.isCopied ? `Copied "${mention.trimEnd()}"` : `Could not copy "${mention.trimEnd()}"`)
+  }
 }
 
 async function run($: EngineInterface, input: Input): Promise<string> {
