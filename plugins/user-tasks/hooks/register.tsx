@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 
-import type { Task } from '../types'
+import type { Ref, Task } from '../types'
 
 type Stored = { nextId: number; tasks: Task[] }
 type Input = {
@@ -22,14 +22,17 @@ const POLL_MS = 2000
 
 const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
 const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
+const openRefs = atom({ plugin: 'user-tasks', key: 'openRefs' } as const, [])
 
-/** A link to a chat row is stored as `[label](REF_HOST<row id>)`; Claude writes `[label](here)` or `[label](prev)`. */
+/** Claude writes `[label](prev)`; it is stored as `[label](REF_HOST<ref id>)`, the ref holding a copy of the passage. */
 const REF_HOST = 'https://user-tasks.invalid/'
-const REF_MARK = /\[([^\]]+)\]\((here|prev)\)/g
+const REF_MARK = /\[([^\]]+)\]\(prev\)/g
 const REF_LINK = /\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/[^)\s]+\)/g
+const MAX_PASSAGE = 2000
 
 // Module state. A reload re-runs session.start, which sets it again.
 let current = ''
+/** The text of the latest reply block drawn this turn: what `(prev)` keeps. */
 let lastMessage = ''
 let queue: Promise<unknown> = Promise.resolve()
 
@@ -47,8 +50,9 @@ const SCHEMA = {
           detail: {
             type: 'string',
             description:
-              'One line: what to look for. May hold links back into this chat: [label](here) is this call, '
-              + '[label](prev) the text you wrote just before it. Use sparingly, only where a passage explains the task.',
+              'One line: what to look for. May hold [label](prev): Ivo clicks it to read, in the pane, the text '
+              + 'you wrote just before this call (kept as a copy, up to 2000 characters). Use sparingly, only where '
+              + 'that passage explains the task.',
           },
           group: { type: 'string', description: 'Section heading, e.g. "Verify login fix".' },
         },
@@ -77,7 +81,7 @@ export const register: Register = on => {
         + 'Actions: add {tasks:[{title,detail?,group?}]}, update {id,title?,detail?,group?,done?}, remove {id}, '
         + 'clear {scope?:"done"|"all",group?}, list {group?} (returns what Ivo has ticked). '
         + 'Optional project: folder path of another project. '
-        + 'Titles and details may hold [label](here) or [label](prev) links that Ivo can click to jump back to this chat. '
+        + 'Titles and details may hold a [label](prev) link: Ivo clicks it to read, in the pane, the text you wrote just before this call. '
         + 'When Ivo mentions "user task #N" (e.g. "Regarding user task #N, ...") he means the item with id N in his list: list it to read what he refers to.',
       inputSchema: SCHEMA,
       isDeferred: false,
@@ -99,21 +103,27 @@ export const register: Register = on => {
 
   on('tool.call', { tool: TOOL }, async ($, e) => {
     try {
-      return { result: await run($, e as Input, e.tool_use_id) }
+      return { result: await run($, e as Input) }
     } catch (err) {
       return { deny: `user_tasks: ${String(err)}` }
     }
   })
 
-  // The latest reply block drawn is the text Claude wrote just before a call, which `(prev)` points at.
+  on('turn.start', ($, e, next) => {
+    lastMessage = ''
+
+    return next(e)
+  })
+
   on('ui.render', { component: 'AssistantMessage' }, (_, e, next) => {
-    lastMessage = e.requestId
+    if (!e.props.isSummary) lastMessage = e.props.text
 
     return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Markdown, Text } = $.ui.resolve(e)
+    const opened = await read($, openRefs)
     const words = (key: string, value: string, isDone: boolean) =>
       !value.includes(REF_HOST) ? (
         <Text dimColor={isDone} strikethrough={isDone}>
@@ -124,7 +134,7 @@ export const register: Register = on => {
           {plain(value)}
         </Text>
       ) : (
-        <Markdown key={key} text={value} onLinkPress={link => void jumpTo($, link.href)} />
+        <Markdown key={key} text={value} onLinkPress={link => void update($, openRefs, ids => toggleId(ids, link.href.slice(REF_HOST.length)))} />
       )
     const all = await read($, tasks)
     const isHiding = await read($, isHidingDone)
@@ -187,6 +197,15 @@ export const register: Register = on => {
                   {t.detail && (
                     <Box paddingLeft={2}>
                       {words(`detail-${t.id}`, t.detail, t.done)}
+                  {!t.done &&
+                    (t.refs ?? [])
+                      .filter(r => opened.includes(r.id))
+                      .map(r => (
+                        <Box key={`passage-${r.id}`} flexDirection="column" paddingLeft={2}>
+                          <Text dimColor>From the chat (click its link again to close):</Text>
+                          <Markdown text={r.text} dimColor />
+                        </Box>
+                      ))}
                     </Box>
                   )}
                 </Box>
@@ -210,8 +229,11 @@ async function referTo($: EngineInterface, id: number, surface: RenderSurface) {
   }
 }
 
-async function run($: EngineInterface, input: Input, callId: string | undefined): Promise<string> {
-  const refs = (text: string) => withRefs(text, callId)
+async function run($: EngineInterface, input: Input): Promise<string> {
+  const passage = lastMessage.length > MAX_PASSAGE ? `${lastMessage.slice(0, MAX_PASSAGE).trimEnd()}…` : lastMessage
+  const made = { missed: 0 }
+  const note = () =>
+    made.missed > 0 ? ` (${made.missed} (prev) link(s) left as plain text: no reply text was available to keep)` : ''
   const project = input.project ? await projectOf($, input.project) : current
 
   switch (input.action) {
@@ -223,8 +245,11 @@ async function run($: EngineInterface, input: Input, callId: string | undefined)
       const added: Task[] = []
       await change($, project, (list, stored) => {
         for (const t of titles) {
-          const task: Task = { id: stored.nextId++, title: refs(t.title.trim()), done: false }
-          if (t.detail?.trim()) task.detail = refs(t.detail.trim())
+          const task: Task = { id: stored.nextId++, title: '', done: false }
+          const refs: Ref[] = []
+          task.title = withPassage(t.title.trim(), task.id, refs, passage, made)
+          if (t.detail?.trim()) task.detail = withPassage(t.detail.trim(), task.id, refs, passage, made)
+          if (refs.length > 0) task.refs = refs
           if (t.group?.trim()) task.group = t.group.trim()
           added.push(task)
         }
@@ -232,7 +257,7 @@ async function run($: EngineInterface, input: Input, callId: string | undefined)
       })
       void $.ui.open({ id: PANE, title: 'Your tasks' })
 
-      return `Added ${added.length}: ${added.map(t => `#${t.id}`).join(', ')}`
+      return `Added ${added.length}: ${added.map(t => `#${t.id}`).join(', ')}${note()}`
     }
     case 'update': {
       let found = false
@@ -241,18 +266,23 @@ async function run($: EngineInterface, input: Input, callId: string | undefined)
           if (t.id !== input.id) return t
           found = true
           const next: Task = { ...t }
-          if (input.title?.trim()) next.title = refs(input.title.trim())
+          const refs: Ref[] = [...(t.refs ?? [])]
+          if (input.title?.trim()) next.title = withPassage(input.title.trim(), t.id, refs, passage, made)
           if (input.done !== undefined) next.done = input.done
           for (const key of ['detail', 'group'] as const) {
             if (input[key] === undefined) continue
-            if (input[key].trim()) next[key] = key === 'detail' ? refs(input[key].trim()) : input[key].trim()
-            else delete next[key]
+            if (input[key].trim()) {
+              next[key] = key === 'detail' ? withPassage(input[key].trim(), t.id, refs, passage, made) : input[key].trim()
+            } else delete next[key]
           }
+          const kept = refs.filter(r => `${next.title} ${next.detail ?? ''}`.includes(`${REF_HOST}${r.id}`))
+          if (kept.length > 0) next.refs = kept
+          else delete next.refs
           return next
         }),
       )
 
-      return found ? `Updated #${input.id}` : `No task #${input.id}`
+      return found ? `Updated #${input.id}${note()}` : `No task #${input.id}`
     }
     case 'remove': {
       let found = false
@@ -295,24 +325,22 @@ function describe(list: Task[], project: string) {
   return out.join('\n')
 }
 
-/** Turns `[label](here)` / `[label](prev)` into links to the chat row of this call, or the reply text before it. */
-const withRefs = (text: string, callId: string | undefined) =>
-  text.replace(REF_MARK, (_, label: string, to: string) => {
-    const row = to === 'prev' ? lastMessage || callId : callId
+/** Turns `[label](prev)` into a link to a copy of `passage` kept on the task; with no passage, the plain label. */
+function withPassage(text: string, taskId: number, refs: Ref[], passage: string, made: { missed: number }) {
+  return text.replace(REF_MARK, (_, label: string) => {
+    if (!passage) {
+      made.missed += 1
+      return label
+    }
+    const id = `${taskId}-${refs.reduce((n, r) => Math.max(n, Number(r.id.split('-')[1]) + 1), 0)}`
+    refs.push({ id, text: passage })
 
-    return row ? `[${label}](${REF_HOST}${encodeURIComponent(row)})` : label
+    return `[${label}](${REF_HOST}${id})`
   })
+}
 const plain = (text: string) => text.replace(REF_LINK, '$1')
 const marked = (text: string) => text.replace(REF_LINK, '$1 ↗')
-
-/** Scrolls the chat to the row a task link names; the row can be gone from this session. */
-async function jumpTo($: EngineInterface, href: string) {
-  const requestId = decodeURIComponent(href.slice(REF_HOST.length))
-  const moved = await $.ui.scroll({ to: { requestId }, block: 'center' }).catch(err => ({ deny: String(err) }))
-  if ('deny' in moved && moved.deny) {
-    $.ui.toast(`That part of the chat is not available in this session (${moved.deny}; row ${requestId}).`)
-  }
-}
+const toggleId = (ids: string[], id: string) => (ids.includes(id) ? ids.filter(one => one !== id) : [...ids, id])
 
 const toggle = (list: Task[], id: number) => list.map(t => (t.id === id ? { ...t, done: !t.done } : t))
 const clearDone = (list: Task[]) => list.filter(t => !t.done)

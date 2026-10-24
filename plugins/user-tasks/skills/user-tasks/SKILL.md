@@ -29,16 +29,18 @@ box (or on his clipboard when the box is unavailable). When a message mentions "
 `list` and read item N, with its group and detail, before answering. The id, not the
 position, identifies it: ids never change while an item exists.
 
-## Linking back to the chat
+## Attaching the reasoning to a task
 
-A `title` or `detail` may contain links Ivo can click to scroll the chat back to a passage:
+A `title` or `detail` may contain `[label](prev)`. The mod keeps a copy of the text you wrote
+just before this call (up to 2000 characters), and Ivo clicks `label` to read it under the
+task in the pane, then clicks again to close it. The chat itself cannot be scrolled to from
+a mod, so the copy is the reference.
 
-- `[label](here)` jumps to this tool call's row in the chat.
-- `[label](prev)` jumps to the text you wrote just before this call.
-
-Use them rarely, only where a passage explains why the task exists or what to look for,
-and write the explanation before the call so `(prev)` lands on it. A task may hold a few.
-Links work only in this session's transcript; `list` shows them as `label ↗`.
+- Write the explanation as a normal paragraph before the call, then link it from the task
+  it explains. Several tasks in one call share that same paragraph.
+- Use it rarely, only where the passage explains why the task exists or what to look for.
+- If no reply text was available, the call's result says so and the label stays plain text.
+- `list` shows these links as `label ↗`.
 
 ## How to use it
 
