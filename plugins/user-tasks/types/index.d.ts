@@ -9,7 +9,7 @@ export type Task = {
 
 declare module 'claude-code' {
   interface PluginState {
-    /** The session's project list, mirrored from `$.store` for the pane to draw. */
-    'user-tasks': { tasks: Task[] }
+    /** The session's project list, mirrored from `$.store`, and whether the pane hides the ticked ones. */
+    'user-tasks': { tasks: Task[]; isHidingDone: boolean }
   }
 }

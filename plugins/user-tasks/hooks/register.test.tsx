@@ -155,3 +155,31 @@ test('/ivo-tasks reopens the pane', async ($, on) => {
   expect(text).toContain('Opened')
   expect(opens).toBe(before + 1)
 })
+
+test('ticked tasks are struck through and the filter hides them', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+  await call($, { action: 'add', tasks: [{ title: 'Check login', detail: 'redirects' }, { title: 'Check logout' }] })
+  await call($, { action: 'update', id: 1, done: true })
+
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ key: 'filter' })).toBeDefined()
+    expect((await ui.find({ key: 'task-1' }))?.text).toContain('̶')
+    expect((await ui.find({ key: 'task-2' }))?.text).not.toContain('̶')
+    expect((await ui.find({ type: 'Text', text: /redirects/ }))?.props?.strikethrough).toBe(true)
+    await ui.unmount()
+  }
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'filter' })
+  expect(await ui.find({ key: 'task-1' })).toBeUndefined()
+  expect(await ui.find({ key: 'task-2' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /1\/2 done/ })).toBeDefined()
+
+  await call($, { action: 'update', id: 2, done: true })
+  expect(await ui.find({ type: 'Text', text: /All done/ })).toBeDefined()
+  await ui.press({ key: 'filter' })
+  expect(await ui.find({ key: 'task-1' })).toBeDefined()
+  await ui.unmount()
+})

@@ -21,6 +21,7 @@ const TOOL = 'mcp__user-tasks__user_tasks'
 const POLL_MS = 2000
 
 const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
+const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
 
 // Module state. A reload re-runs session.start, which sets it again.
 let current = ''
@@ -93,22 +94,34 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
-    const list = await read($, tasks)
-    const doneCount = list.filter(t => t.done).length
+    const all = await read($, tasks)
+    const isHiding = await read($, isHidingDone)
+    const doneCount = all.filter(t => t.done).length
+    const list = isHiding ? all.filter(t => !t.done) : all
     const groups = [...new Set(list.map(t => t.group ?? ''))]
 
     return (
       <Box flexDirection="column" gap={2}>
-        <Box>
-          <Text bold>Your tasks </Text>
+        <Box gap={1}>
+          <Text bold>Your tasks</Text>
           <Text dimColor>
-            {doneCount}/{list.length} done{' '}
+            {doneCount}/{all.length} done
           </Text>
+          {(doneCount > 0 || isHiding) && (
+            <Button
+              key="filter"
+              label={isHiding ? 'Show done' : 'Hide done'}
+              plain
+              dimColor
+              onPress={() => void update($, isHidingDone, hiding => !hiding)}
+            />
+          )}
           {doneCount > 0 && (
             <Button key="clear-done" label="Clear done" plain dimColor onPress={() => void change($, current, clearDone)} />
           )}
         </Box>
-        {list.length === 0 && <Text dimColor>Nothing for you to check yet.</Text>}
+        {all.length === 0 && <Text dimColor>Nothing for you to check yet.</Text>}
+        {all.length > 0 && list.length === 0 && <Text dimColor>All done. Show done lists them.</Text>}
         {groups.map(group => (
           <Box key={`group-${group}`} flexDirection="column" gap={1}>
             {group !== '' && <Text bold>{group}</Text>}
@@ -118,12 +131,17 @@ export const register: Register = on => {
                 <Box key={`row-${t.id}`} flexDirection="column">
                   <Button
                     key={`task-${t.id}`}
-                    label={`${t.done ? '☑' : '☐'} ${t.title}`}
+                    label={`${t.done ? '☑' : '☐'} ${t.done ? strike(t.title) : t.title}`}
                     plain
                     dimColor={t.done}
                     onPress={() => void change($, current, ts => toggle(ts, t.id))}
                   />
-                  {t.detail && <Text dimColor>{'    '}{t.detail}</Text>}
+                  {t.detail && (
+                    <Text dimColor strikethrough={t.done}>
+                      {'    '}
+                      {t.detail}
+                    </Text>
+                  )}
                 </Box>
               ))}
           </Box>
@@ -217,6 +235,8 @@ function describe(list: Task[], project: string) {
   return out.join('\n')
 }
 
+/** A Button label takes no styled children, so its strike-through is the combining stroke on each character. */
+const strike = (text: string) => [...text].map(c => `${c}̶`).join('')
 const toggle = (list: Task[], id: number) => list.map(t => (t.id === id ? { ...t, done: !t.done } : t))
 const clearDone = (list: Task[]) => list.filter(t => !t.done)
 
