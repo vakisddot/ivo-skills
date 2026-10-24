@@ -96,7 +96,10 @@ scrolling away in the transcript; you tick them off and Claude can read what you
 Lists are per project (a worktree shares its repository's list) and survive restarts.
 Claude writes to it through one tool, `mcp__user-tasks__user_tasks` (`add`, `update`,
 `remove`, `clear`, `list`), documented in `plugins/user-tasks/skills/user-tasks`.
-`/ivo-tasks` reopens the pane if you closed it.
+`/ivo-tasks` reopens the pane if you closed it. Ticked items are struck through;
+Hide done and Clear done tidy the list.
+
+![The Your tasks pane](docs/user-tasks.png)
 
 ```
 /plugin install user-tasks@ivo-skills
