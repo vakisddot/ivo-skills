@@ -225,7 +225,8 @@ const REPLY = {
 } as const
 
 test('[label](prev) keeps the reply text and opens it under the task', async ($, on) => {
-  engine(on)
+  const clock = engine(on)
+
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
 
@@ -252,12 +253,16 @@ test('[label](prev) keeps the reply text and opens it under the task', async ($,
   const link = { href: 'https://user-tasks.invalid/1-0' }
   await ui.press({ key: 'detail-1', link })
   expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeDefined()
+  await clock.settle()
+  await clock.advance(200)
   await ui.press({ key: 'detail-1', link })
   expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeUndefined()
 
   expect(await call($, { action: 'list' })).toContain('Why: see the reasoning ↗ first')
 
   await ui.press({ key: 'detail-1', link })
+  await clock.settle()
+  await clock.advance(200)
   await call($, { action: 'update', id: 1, done: true })
   expect(await ui.find({ key: 'detail-1' })).toBeUndefined()
   expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeUndefined()

@@ -134,7 +134,7 @@ export const register: Register = on => {
           {plain(value)}
         </Text>
       ) : (
-        <Markdown key={key} text={value} onLinkPress={link => void update($, openRefs, ids => toggleId(ids, link.href.slice(REF_HOST.length)))} />
+        <Markdown key={key} text={value} onLinkPress={link => void togglePassage($, link.href.slice(REF_HOST.length))} />
       )
     const all = await read($, tasks)
     const isHiding = await read($, isHidingDone)
@@ -340,6 +340,15 @@ function withPassage(text: string, taskId: number, refs: Ref[], passage: string,
 }
 const plain = (text: string) => text.replace(REF_LINK, '$1')
 const marked = (text: string) => text.replace(REF_LINK, '$1 ↗')
+/** Opens or closes a kept passage; an opened one is scrolled into view, since it lands below the task. */
+async function togglePassage($: EngineInterface, id: string) {
+  const isOpening = !(await read($, openRefs)).includes(id)
+  await update($, openRefs, ids => toggleId(ids, id))
+  if (isOpening) {
+    await $.clock.sleep(100)
+    await $.ui.scroll({ to: { key: `passage-${id}` }, in: PANE, block: 'nearest' }).catch(() => undefined)
+  }
+}
 const toggleId = (ids: string[], id: string) => (ids.includes(id) ? ids.filter(one => one !== id) : [...ids, id])
 
 const toggle = (list: Task[], id: number) => list.map(t => (t.id === id ? { ...t, done: !t.done } : t))
