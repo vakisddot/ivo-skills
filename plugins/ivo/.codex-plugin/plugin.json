@@ -1,7 +1,7 @@
 {
   "name": "ivo",
   "version": "0.1.0",
-  "description": "Ivo's personal skill set: coding standards, slop cleanup, teaching mode, plain-English answers, context auditing, codebase roasts, background removal, and Codex/Claude session bridges.",
+  "description": "Ivo's personal skill set: coding standards, slop cleanup, PR exams, teaching mode, plain-English answers, context auditing, codebase roasts, background removal, and Codex/Claude session bridges.",
   "author": {
     "name": "Ivo"
   },
@@ -10,7 +10,7 @@
   "interface": {
     "displayName": "Ivo",
     "shortDescription": "Ivo's personal working style, in one plugin",
-    "longDescription": "Nine portable skills Ivo uses across Claude Code and Codex: code for smallest-complete-solution implementation and review, deslop for evidence-based cleanup, teach for Socratic guidance, simple for plain-English answers, context-check for auditing loaded instructions, roast-codebase for humorous-but-useful review, remove-bg-image for transparent-PNG cutouts, and codex and claude for sending notes to the other assistant's sessions.",
+    "longDescription": "Ten portable skills Ivo uses across Claude Code and Codex: code for smallest-complete-solution implementation and review, deslop for evidence-based cleanup, teach for Socratic guidance, exam for PR understanding checks, simple for plain-English answers, context-check for auditing loaded instructions, roast-codebase for humorous-but-useful review, remove-bg-image for transparent-PNG cutouts, and codex and claude for sending notes to the other assistant's sessions.",
     "developerName": "Ivo",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],

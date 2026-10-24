@@ -15,6 +15,7 @@ as `ivo:<skill>` — the `ivo-` prefix lives in the namespace, not in the skill 
 | `ivo:code` | Implementation and review using the smallest complete solution that stays clear, correct, and maintainable |
 | `ivo:deslop` | Evidence-based slop audits and scoped cleanup that preserve supported behavior |
 | `ivo:teach` | Socratic mode — guides toward the answer instead of handing it over |
+| `ivo:exam` | PR understanding exam with code questions; every question must pass before understanding is marked ready |
 | `ivo:simple` | Rewrites one answer in extremely plain English, no jargon |
 | `ivo:context-check` | Reports every instruction and file auto-loaded into the session |
 | `ivo:roast-codebase` | Code review that is funny and actually useful |

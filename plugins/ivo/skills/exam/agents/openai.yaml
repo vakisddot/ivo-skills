@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Exam"
+  short_description: "Check PR understanding, one question at a time"
+  default_prompt: "Use $ivo:exam to examine me on this PR, including its code, and require every question to pass before marking it ready from the understanding side."
