@@ -256,7 +256,7 @@ test('{{label|text}} makes an inline link; one note opens at a time per task and
   await open('detail-1', '1-1')
   expect(await shows(/check \*\*both\*\* paths/)).toBe(true)
   // The opened block's header carries the link's name.
-  expect((await ui.find({ key: 'close-1-1' }))?.text).toBe('▾ Why this matters')
+  expect((await ui.find({ key: 'close-1-1' }))?.props?.text).toBe(`[**▾ Why this matters**](${URL}1-1)`)
 
   // Another task opens alongside; a second link of the same task (title or detail) replaces the first.
   await open('detail-2', '2-0')
@@ -271,7 +271,7 @@ test('{{label|text}} makes an inline link; one note opens at a time per task and
   expect(await shows(/Logout clears/)).toBe(true)
 
   // The header closes it, and so does its link.
-  await ui.press({ key: 'close-1-0' })
+  await ui.press({ key: 'close-1-0', link: { href: `${URL}1-0` } })
   await clock.settle()
   await clock.advance(500)
   expect(await shows(/Login text/)).toBe(false)
@@ -334,7 +334,7 @@ test('a task saved with a chat passage keeps its link, labelled by it', async ($
   await clock.settle()
   await clock.advance(500)
   expect(await ui.find({ type: 'Markdown', text: /Second passage/ })).toBeDefined()
-  expect((await ui.find({ key: 'close-1-1' }))?.text).toBe('▾ why')
+  expect((await ui.find({ key: 'close-1-1' }))?.props?.text).toBe(`[**▾ why**](${URL}1-1)`)
   expect(await ui.find({ key: 'close-2-0' })).toBeUndefined()
   await ui.unmount()
 })

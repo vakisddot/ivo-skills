@@ -189,13 +189,11 @@ export const register: Register = on => {
                         .filter(n => opened.includes(n.id))
                         .map(n => (
                           <Box key={`block-${n.id}`} flexDirection="column" paddingLeft={2} marginTop={1}>
-                            <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-                              <Button
+                            <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
+                              <Markdown
                                 key={`close-${n.id}`}
-                                label={`▾ ${n.label}`}
-                                plain
-                                dimColor
-                                onPress={() => void toggleNote($, n.id)}
+                                text={`[**▾ ${n.label}**](${REF_HOST}${n.id})`}
+                                onLinkPress={() => void toggleNote($, n.id)}
                               />
                               <Markdown text={n.text} dimColor />
                             </Box>
