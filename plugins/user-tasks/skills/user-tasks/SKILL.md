@@ -29,20 +29,20 @@ box (or on his clipboard when the box is unavailable). When a message mentions "
 `list` and read item N, with its group and detail, before answering. The id, not the
 position, identifies it: ids never change while an item exists.
 
-## Notes: collapsible background under a task
+## Links that open background text under a task
 
-A task may carry `notes`: `[{ label, text }]`, with `text` in markdown (up to 2000 characters).
-Each note shows as a small `▸ label` link under the task's description. Ivo clicks it to open
-the text in a framed block below the task, and clicks the block's header (or the label) to
-close it. One note is open at a time per task.
+Write `{{label|text}}` anywhere in a task's `title` or `detail`. It shows as a link named
+`label`; Ivo clicks it to open `text` (markdown, up to 2000 characters) in a framed block
+under the task, headed by the label, and clicks the header or the link again to close it.
+A task can hold several such links, and one block is open at a time per task.
 
-- Use notes for background that would otherwise be pasted into chat: why the task exists,
-  steps to reproduce, expected results, what to compare. Keep the title and `detail` short.
-- Give each note a short label ("Why this matters", "Steps"). Several notes per task are fine.
-- `add` takes `notes` per task. `update` with `notes` replaces the task's notes, and
-  `notes: []` removes them. Ticked tasks hide their notes.
-- `list` shows each task's note labels (`[notes: Why this matters, Steps]`) but not the text:
-  you wrote it, so you already know it.
+- Use it for background you would otherwise paste into chat: why the task exists, steps to
+  reproduce, expected results. Keep the title and the visible words of `detail` short.
+- Example `detail`: `Sign in with a valid account. {{Why this matters|The redirect changed, so check **both** paths.}}`
+- The text is stored with the task, so it works in any session and in tasks written with
+  `project`. Editing the title or detail so it no longer holds the link removes that text.
+- `list` shows each link as `label ↗` but not the text: you wrote it, so you already know it.
+- A blank `text` leaves the plain label. Ticked tasks hide their open blocks.
 
 ## How to use it
 

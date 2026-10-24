@@ -1,4 +1,4 @@
-/** Collapsible background Claude attached to a task, opened from its label in the pane. */
+/** Text behind a link in a task's title or detail (`[label](https://user-tasks.invalid/<id>)`), opened in the pane. */
 export type Note = { id: string; label: string; text: string }
 
 /** What an earlier version kept per task: a chat passage, linked from the task's text. Read once, as a note. */

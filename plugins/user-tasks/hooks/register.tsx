@@ -4,16 +4,14 @@ import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 import type { Note, Task } from '../types'
 
 type Stored = { nextId: number; tasks: Task[] }
-type NoteInput = { label?: string; text?: string }
 type Input = {
   action?: 'add' | 'update' | 'remove' | 'clear' | 'list'
   project?: string
-  tasks?: { title: string; detail?: string; group?: string; notes?: NoteInput[] }[]
+  tasks?: { title: string; detail?: string; group?: string }[]
   id?: number
   title?: string
   detail?: string
   group?: string
-  notes?: NoteInput[]
   done?: boolean
   scope?: 'done' | 'all'
 }
@@ -29,27 +27,19 @@ const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const
 /** The notes open now, by note id: at most one per task (note ids are `<task id>-<n>`). */
 const openNotes = atom({ plugin: 'user-tasks', key: 'openNotes' } as const, [])
 
-/** Links an earlier version put in titles and details, before a task's reference text became its notes. */
-const LEGACY_LINK = /\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/[^)\s]+\)/g
+/** Claude writes `{{label|text}}` in a title or detail; it is stored as `[label](REF_HOST<note id>)` and a note. */
+const REF_HOST = 'https://user-tasks.invalid/'
+const NOTE_MARK = /\{\{([^|{}]+)\|([\s\S]*?)\}\}/g
+const NOTE_LINK = /\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/[^)\s]+\)/g
 
 // Module state. A reload re-runs session.start, which sets it again.
 let current = ''
 let queue: Promise<unknown> = Promise.resolve()
 
-const NOTES_SCHEMA = {
-  type: 'array',
-  description:
-    'Collapsible background Ivo opens under the task by clicking its label. For context that would otherwise '
-    + 'be pasted in chat: why the task exists, steps, expected results. Up to 2000 characters of markdown each.',
-  items: {
-    type: 'object',
-    properties: {
-      label: { type: 'string', description: 'Short link text, e.g. "Why this matters".' },
-      text: { type: 'string', description: 'The note, markdown.' },
-    },
-    required: ['text'],
-  },
-}
+const DETAIL_HELP =
+  'One line: what to look for. May hold {{label|text}}: it shows as a link labelled `label` that Ivo clicks to open `text` '
+  + '(markdown, up to 2000 characters) in a framed block under the task. Use it for background you would otherwise paste in chat; '
+  + 'several per task are fine.'
 
 const SCHEMA = {
   type: 'object',
@@ -61,19 +51,17 @@ const SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Short imperative title.' },
-          detail: { type: 'string', description: 'One line: what to look for.' },
+          title: { type: 'string', description: 'Short imperative title. May hold {{label|text}} notes, as detail.' },
+          detail: { type: 'string', description: DETAIL_HELP },
           group: { type: 'string', description: 'Section heading, e.g. "Verify login fix".' },
-          notes: NOTES_SCHEMA,
         },
         required: ['title'],
       },
     },
     id: { type: 'number', description: 'update, remove: the item id.' },
     title: { type: 'string', description: 'update: new title.' },
-    detail: { type: 'string', description: 'update: new detail; "" removes it.' },
+    detail: { type: 'string', description: `update: new detail; "" removes it. ${DETAIL_HELP}` },
     group: { type: 'string', description: 'update: new group, "" ungroups; clear, list: only this group.' },
-    notes: { ...NOTES_SCHEMA, description: `update: replaces the item's notes; [] removes them. ${NOTES_SCHEMA.description}` },
     done: { type: 'boolean', description: 'update: tick or untick. Ivo ticks items himself.' },
     scope: { enum: ['done', 'all'], description: 'clear: ticked items only (default) or everything.' },
     project: { type: 'string', description: 'Folder of another project, to use its list. Default: this session.' },
@@ -89,9 +77,9 @@ export const register: Register = on => {
       description:
         'Ivo\'s persistent "Your tasks" checklist, one per project, always visible beside the chat. '
         + 'Put every checklist you hand Ivo (things to test, check or do) here instead of only in chat. '
-        + 'Actions: add {tasks:[{title,detail?,group?,notes?}]}, update {id,title?,detail?,group?,notes?,done?}, '
+        + 'Actions: add {tasks:[{title,detail?,group?}]}, update {id,title?,detail?,group?,done?}, '
         + 'remove {id}, clear {scope?:"done"|"all",group?}, list {group?} (returns what Ivo has ticked). '
-        + 'notes: [{label,text}] are collapsible background under a task: put context there instead of in chat. '
+        + 'Titles and details may hold {{label|text}}: a link Ivo clicks to open text under the task, for context you would otherwise paste in chat. '
         + 'Optional project: folder path of another project. '
         + 'When Ivo mentions "user task #N" (e.g. "Regarding user task #N, ...") he means the item with id N in his list: list it to read what he refers to.',
       inputSchema: SCHEMA,
@@ -123,6 +111,19 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Markdown, Text } = $.ui.resolve(e)
     const opened = await read($, openNotes)
+    const words = (key: string, value: string, isDone: boolean, isTitle = false) =>
+      isDone ? (
+        <Text bold={isTitle} dimColor strikethrough>
+          {plain(value)}
+        </Text>
+      ) : (
+        <Markdown
+          key={key}
+          text={isTitle ? bold(value) : value}
+          dimColor={!isTitle}
+          onLinkPress={link => void toggleNote($, link.href.slice(REF_HOST.length))}
+        />
+      )
     const all = await read($, tasks)
     const isHiding = await read($, isHidingDone)
     const doneCount = all.filter(t => t.done).length
@@ -170,9 +171,7 @@ export const register: Register = on => {
                         />
                       </Box>
                       <Box flexGrow={1} flexShrink={1}>
-                        <Text bold dimColor={t.done} strikethrough={t.done}>
-                          {t.title}
-                        </Text>
+                        {words(`title-${t.id}`, t.title, t.done, true)}
                       </Box>
                       <Box flexShrink={0} paddingLeft={1}>
                         <Button
@@ -184,25 +183,7 @@ export const register: Register = on => {
                         />
                       </Box>
                     </Box>
-                    {t.detail && (
-                      <Box paddingLeft={2}>
-                        <Text dimColor strikethrough={t.done}>
-                          {t.detail}
-                        </Text>
-                      </Box>
-                    )}
-                    {!t.done && (t.notes ?? []).length > 0 && (
-                      <Box paddingLeft={2} flexWrap="wrap" columnGap={2}>
-                        {(t.notes ?? []).map(n => (
-                          <Button
-                            key={`note-${n.id}`}
-                            label={`${opened.includes(n.id) ? '▾' : '▸'} ${n.label}`}
-                            plain
-                            onPress={() => void toggleNote($, n.id)}
-                          />
-                        ))}
-                      </Box>
-                    )}
+                    {t.detail && <Box paddingLeft={2}>{words(`detail-${t.id}`, t.detail, t.done)}</Box>}
                     {!t.done &&
                       (t.notes ?? [])
                         .filter(n => opened.includes(n.id))
@@ -249,15 +230,16 @@ async function run($: EngineInterface, input: Input): Promise<string> {
     case 'add': {
       const titles = (input.tasks ?? []).filter(t => t.title?.trim())
       if (titles.length === 0) {
-        throw new Error('add needs tasks: [{ title, detail?, group?, notes? }]')
+        throw new Error('add needs tasks: [{ title, detail?, group? }]')
       }
       const added: Task[] = []
       await change($, project, (list, stored) => {
         for (const t of titles) {
-          const task: Task = { id: stored.nextId++, title: t.title.trim(), done: false }
-          if (t.detail?.trim()) task.detail = t.detail.trim()
+          const task: Task = { id: stored.nextId++, title: '', done: false }
+          const notes: Note[] = []
+          task.title = withNotes(t.title.trim(), task.id, notes)
+          if (t.detail?.trim()) task.detail = withNotes(t.detail.trim(), task.id, notes)
           if (t.group?.trim()) task.group = t.group.trim()
-          const notes = makeNotes(task.id, t.notes)
           if (notes.length > 0) task.notes = notes
           added.push(task)
         }
@@ -274,18 +256,17 @@ async function run($: EngineInterface, input: Input): Promise<string> {
           if (t.id !== input.id) return t
           found = true
           const next: Task = { ...t }
-          if (input.title?.trim()) next.title = input.title.trim()
+          const notes: Note[] = [...(t.notes ?? [])]
+          if (input.title?.trim()) next.title = withNotes(input.title.trim(), t.id, notes)
           if (input.done !== undefined) next.done = input.done
           for (const key of ['detail', 'group'] as const) {
             if (input[key] === undefined) continue
-            if (input[key].trim()) next[key] = input[key].trim()
+            if (input[key].trim()) next[key] = key === 'detail' ? withNotes(input[key].trim(), t.id, notes) : input[key].trim()
             else delete next[key]
           }
-          if (input.notes !== undefined) {
-            const notes = makeNotes(t.id, input.notes)
-            if (notes.length > 0) next.notes = notes
-            else delete next.notes
-          }
+          const kept = notes.filter(n => `${next.title}\n${next.detail ?? ''}`.includes(`${REF_HOST}${n.id})`))
+          if (kept.length > 0) next.notes = kept
+          else delete next.notes
           return next
         }),
       )
@@ -326,28 +307,29 @@ function describe(list: Task[], project: string) {
   for (const group of new Set(list.map(t => t.group ?? ''))) {
     if (group !== '') out.push(group)
     for (const t of list.filter(one => (one.group ?? '') === group)) {
-      const notes = t.notes?.length ? ` [notes: ${t.notes.map(n => n.label).join(', ')}]` : ''
-      out.push(`  [${t.done ? 'x' : ' '}] #${t.id} ${t.title}${t.detail ? ` — ${t.detail}` : ''}${notes}`)
+      out.push(`  [${t.done ? 'x' : ' '}] #${t.id} ${marked(t.title)}${t.detail ? ` — ${marked(t.detail)}` : ''}`)
     }
   }
 
   return out.join('\n')
 }
 
-/** A task's notes as the tool gave them: blank ones dropped, text and label capped, ids `<task id>-<n>`. */
-function makeNotes(taskId: number, given: NoteInput[] | undefined): Note[] {
-  return (given ?? [])
-    .filter(n => n.text?.trim())
-    .map((n, i) => {
-      const text = (n.text ?? '').trim()
+/** Turns each `{{label|text}}` into a link to a note kept on the task; a blank text leaves the plain label. */
+function withNotes(text: string, taskId: number, notes: Note[]) {
+  return text.replace(NOTE_MARK, (_, rawLabel: string, rawText: string) => {
+    const label = rawLabel.replace(/[[\]]/g, '').trim().slice(0, MAX_LABEL) || 'More'
+    const body = rawText.trim()
+    if (!body) return label
+    const id = `${taskId}-${notes.reduce((n, note) => Math.max(n, Number(note.id.split('-')[1]) + 1), 0)}`
+    notes.push({ id, label, text: body.length > MAX_NOTE ? `${body.slice(0, MAX_NOTE).trimEnd()}…` : body })
 
-      return {
-        id: `${taskId}-${i}`,
-        label: (n.label?.trim() || 'More').slice(0, MAX_LABEL),
-        text: text.length > MAX_NOTE ? `${text.slice(0, MAX_NOTE).trimEnd()}…` : text,
-      }
-    })
+    return `[${label}](${REF_HOST}${id})`
+  })
 }
+/** A title in bold, its link labels too, which markdown would otherwise leave regular. */
+const bold = (text: string) => `**${text.replace(NOTE_LINK, link => link.replace('[', '[**').replace('](', '**]('))}**`
+const plain = (text: string) => text.replace(NOTE_LINK, '$1')
+const marked = (text: string) => text.replace(NOTE_LINK, '$1 ↗')
 
 /** Opens or closes a note, closing any other of the same task; an opened one is scrolled into view. */
 async function toggleNote($: EngineInterface, id: string) {
@@ -395,19 +377,20 @@ async function load($: EngineInterface, project: string): Promise<Stored> {
   return { nextId: stored?.nextId ?? 1, tasks: (stored?.tasks ?? []).map(migrate) }
 }
 
-/** Turns a task from the version that kept chat passages (`refs`, linked from its text) into one with notes. */
+/**
+ * Reads a task saved by an earlier version: a chat passage (`refs`) becomes a note, labelled as the link to it in
+ * the task's text, and a note nothing links to is dropped.
+ */
 function migrate(task: Task): Task {
   const { refs, ...rest } = task
-  if (!refs) return task
-  const strip = (text: string) => text.replace(LEGACY_LINK, '$1')
-  const migrated = refs.map((r, i) => ({ id: r.id, label: i === 0 ? 'More' : `More ${i + 1}`, text: r.text }))
+  const text = `${task.title}\n${task.detail ?? ''}`
+  const labels = new Map([...text.matchAll(/\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/([^)\s]+)\)/g)].map(m => [m[2], m[1]]))
+  const labelOf = (id: string) => labels.get(id) ?? 'More'
+  const all = [...(task.notes ?? []), ...(refs ?? []).map(r => ({ id: r.id, label: labelOf(r.id), text: r.text }))]
+  const notes = all.filter(n => text.includes(`${REF_HOST}${n.id})`))
+  if (!refs && notes.length === (task.notes ?? []).length) return task
 
-  return {
-    ...rest,
-    title: strip(task.title),
-    ...(task.detail ? { detail: strip(task.detail) } : {}),
-    notes: [...(task.notes ?? []), ...migrated],
-  }
+  return notes.length > 0 ? { ...rest, notes } : (({ notes: _, ...bare }) => bare)(rest)
 }
 
 /** A worktree shares its main repository's list. */
