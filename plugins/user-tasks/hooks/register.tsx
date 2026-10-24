@@ -202,20 +202,16 @@ export const register: Register = on => {
                       />
                     </Box>
                   </Box>
-                  {t.detail && (
-                    <Box paddingLeft={2}>
-                      {words(`detail-${t.id}`, t.detail, t.done)}
+                  {t.detail && <Box paddingLeft={2}>{words(`detail-${t.id}`, t.detail, t.done)}</Box>}
                   {!t.done &&
                     (t.refs ?? [])
                       .filter(r => r.id === opened)
                       .map(r => (
-                        <Box key={`passage-${r.id}`} flexDirection="column" paddingLeft={2} width="100%">
+                        <Box key={`passage-${r.id}`} flexDirection="column" paddingLeft={2}>
                           <Text dimColor>From the chat (click its link again to close):</Text>
                           <Markdown text={r.text} dimColor />
                         </Box>
                       ))}
-                    </Box>
-                  )}
                 </Box>
               ))}
           </Box>

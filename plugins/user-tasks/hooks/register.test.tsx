@@ -316,3 +316,23 @@ test('one passage is open at a time, and titles can hold links too', async ($, o
   await clock.advance(200)
   await ui.unmount()
 })
+
+test('a passage opened from a title-only task shows under it', async ($, on) => {
+  const clock = engine(on)
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return <Text>reply</Text>
+  })
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+  const reply = await $.ui.mount({ ...REPLY, surface: 'desktop' })
+  await reply.unmount()
+  await call($, { action: 'add', tasks: [{ title: 'Check [login](prev)' }] })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })
+  expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeDefined()
+  await clock.settle()
+  await clock.advance(200)
+  await ui.unmount()
+})
