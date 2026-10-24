@@ -30,6 +30,8 @@ const REF_HOST = 'https://user-tasks.invalid/'
 const REF_MARK = /\[([^\]]+)\]\(prev\)/g
 const REF_LINK = /\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/[^)\s]+\)/g
 const MAX_PASSAGE = 2000
+/** The bar down the left of an opened passage, a mid grey that shows on dark and light. */
+const PASSAGE_BAR = '#6b7280'
 
 // Module state. A reload re-runs session.start, which sets it again.
 let current = ''
@@ -170,7 +172,7 @@ export const register: Register = on => {
         {all.length === 0 && <Text dimColor>Nothing for you to check yet.</Text>}
         {all.length > 0 && list.length === 0 && <Text dimColor>All done. Show done lists them.</Text>}
         {groups.map(group => (
-          <Box key={`group-${group}`} flexDirection="column">
+          <Box key={`group-${group}`} flexDirection="column" gap={1}>
             {group !== '' && <Markdown text={`# ${group.toUpperCase()}`} />}
             <Box flexDirection="column" gap={1}>
               {list
@@ -205,9 +207,12 @@ export const register: Register = on => {
                     (t.refs ?? [])
                       .filter(r => opened.includes(r.id))
                       .map(r => (
-                        <Box key={`passage-${r.id}`} flexDirection="column" paddingLeft={2}>
-                          <Text dimColor>From the chat (click its link again to close):</Text>
-                          <Markdown text={r.text} dimColor />
+                        <Box key={`passage-${r.id}`} paddingLeft={2} marginTop={1}>
+                          <Box width={1} flexShrink={0} backgroundColor={PASSAGE_BAR} />
+                          <Box flexDirection="column" paddingX={1} flexShrink={1}>
+                            <Text dimColor>From the chat (click its link again to close)</Text>
+                            <Markdown text={r.text} dimColor />
+                          </Box>
                         </Box>
                       ))}
                 </Box>
