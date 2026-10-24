@@ -241,7 +241,9 @@ test('[label](here) in a task links back to the chat row of the call', async ($,
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'detail-1', link: { href: 'https://user-tasks.invalid/toolu_42' } })
-  expect(toasts).toEqual(['That part of the chat is not available in this session.'])
+  expect(toasts).toHaveLength(1)
+  expect(toasts[0]).toContain('not available in this session')
+  expect(toasts[0]).toContain('row toolu_42')
 
   expect(await call($, { action: 'list' })).toContain('Why: see the reasoning ↗ first')
 

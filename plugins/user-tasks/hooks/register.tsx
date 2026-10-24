@@ -308,9 +308,9 @@ const marked = (text: string) => text.replace(REF_LINK, '$1 ↗')
 /** Scrolls the chat to the row a task link names; the row can be gone from this session. */
 async function jumpTo($: EngineInterface, href: string) {
   const requestId = decodeURIComponent(href.slice(REF_HOST.length))
-  const moved = await $.ui.scroll({ to: { requestId }, block: 'center' }).catch(() => ({ deny: 'gone' }))
+  const moved = await $.ui.scroll({ to: { requestId }, block: 'center' }).catch(err => ({ deny: String(err) }))
   if ('deny' in moved && moved.deny) {
-    $.ui.toast('That part of the chat is not available in this session.')
+    $.ui.toast(`That part of the chat is not available in this session (${moved.deny}; row ${requestId}).`)
   }
 }
 
