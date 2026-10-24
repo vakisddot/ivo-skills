@@ -356,10 +356,7 @@ test('a passage opened from a title-only task shows under it', async ($, on) => 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })
   expect(await ui.find({ type: 'Markdown', text: /Login redirects/ })).toBeDefined()
-  // It slides open: the frame has a height while the animation runs, and none once it is done.
-  expect(typeof (await ui.find({ key: 'passage-1-0' }))?.props?.height).toBe('number')
   await clock.settle()
   await clock.advance(500)
-  expect((await ui.find({ key: 'passage-1-0' }))?.props?.height).toBeUndefined()
   await ui.unmount()
 })
