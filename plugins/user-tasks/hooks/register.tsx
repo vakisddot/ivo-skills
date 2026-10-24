@@ -21,6 +21,8 @@ const TOOL = 'mcp__user-tasks__user_tasks'
 const POLL_MS = 2000
 const MAX_NOTE = 2000
 const MAX_LABEL = 40
+/** The eye, with the text variation selector so it draws as a plain glyph, not a colour emoji. */
+const EYE = '\u{1F441}\uFE0E'
 
 const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
 const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
@@ -135,19 +137,19 @@ export const register: Register = on => {
         <Box gap={1}>
           <Text bold>Your tasks</Text>
           <Text dimColor>
-            {doneCount}/{all.length} done
+            ✓ {doneCount}/{all.length} done
           </Text>
           {(doneCount > 0 || isHiding) && (
             <Button
               key="filter"
-              label={isHiding ? 'Show done' : 'Hide done'}
+              label={isHiding ? `${EYE} Show done` : `${EYE} Hide done`}
               plain
               dimColor
               onPress={() => void update($, isHidingDone, hiding => !hiding)}
             />
           )}
           {doneCount > 0 && (
-            <Button key="clear-done" label="Clear done" plain dimColor onPress={() => void change($, current, clearDone)} />
+            <Button key="clear-done" label="✕ Clear done" plain dimColor onPress={() => void change($, current, clearDone)} />
           )}
         </Box>
         {all.length === 0 && <Text dimColor>Nothing for you to check yet.</Text>}
