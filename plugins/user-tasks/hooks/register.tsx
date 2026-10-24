@@ -28,6 +28,8 @@ const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
 const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
 /** The notes open now, by note id: at most one per task (note ids are `<task id>-<n>`). */
 const openNotes = atom({ plugin: 'user-tasks', key: 'openNotes' } as const, [])
+/** Whether the pane is open and drawn; while it is not, the band above the prompt offers a button that opens it. */
+const isPaneShown = atom({ plugin: 'user-tasks', key: 'isPaneShown' } as const, false)
 
 /** Claude writes `{{label|text}}` in a title or detail; it is stored as `[label](REF_HOST<note id>)` and a note. */
 const REF_HOST = 'https://user-tasks.invalid/'
@@ -91,15 +93,40 @@ export const register: Register = on => {
     current = await projectOf($, await $.session.root())
     await refresh($)
     $.clock.every(POLL_MS, () => void refresh($))
-    void $.ui.open({ id: PANE, title: 'Your tasks' })
+    void openPane($).catch(() => undefined)
 
     return next(e)
   })
 
   on('command.run', { command: 'ivo-tasks' }, async $ => {
-    await $.ui.open({ id: PANE, title: 'Your tasks' })
+    await openPane($)
 
     return { text: 'Opened the "Your tasks" pane.' }
+  })
+
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    const closed = await next(e)
+    await update($, isPaneShown, () => false)
+
+    return closed
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey || (await read($, isPaneShown))) {
+      return next(e)
+    }
+
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const open = (await read($, tasks)).filter(t => !t.done).length
+
+    return (
+      <Box flexDirection="column">
+        <Button key="open-tasks" plain onPress={() => void openPane($)}>
+          ☐ Your tasks <Text dimColor>{open} open</Text>
+        </Button>
+        {await next(e)}
+      </Box>
+    )
   })
 
   on('tool.call', { tool: TOOL }, async ($, e) => {
@@ -222,6 +249,12 @@ export const register: Register = on => {
   })
 }
 
+/** Opens the pane and notes whether a surface draws it, so the band's button shows only while it does not. */
+async function openPane($: EngineInterface) {
+  const opened = await $.ui.open({ id: PANE, title: 'Your tasks' })
+  await update($, isPaneShown, () => opened.isPlaced)
+}
+
 /** Puts "Regarding user task #N, " in the prompt box at the cursor; without a box, on the clipboard. */
 async function referTo($: EngineInterface, id: number, surface: RenderSurface) {
   const { text, cursor } = await $.prompt.read()
@@ -256,7 +289,7 @@ async function run($: EngineInterface, input: Input): Promise<string> {
         }
         return [...list, ...added]
       })
-      void $.ui.open({ id: PANE, title: 'Your tasks' })
+      void openPane($).catch(() => undefined)
 
       return `Added ${added.length}: ${added.map(t => `#${t.id}`).join(', ')}`
     }

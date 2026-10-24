@@ -16,12 +16,20 @@ const PANE = {
     view: {},
   },
 } as const
+const BAND = {
+  plugin: 'user-tasks',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+} as const
 
 let opens = 0
+/** Whether a surface draws the pane the mod opens; false stands for a terminal too narrow for an unasked pane. */
+let isPlaced = true
 
 /** Stands in for the engine under the mod: a repo at C:/Repo; a folder under worktrees/ shares its git dir. */
 const engine = (on: On, store: Record<string, unknown> = {}) => {
   opens = 0
+  isPlaced = true
   const clock = mock.clock(on)
   on('store.get', (_, e) => ({ value: store[e.key] }))
   on('store.set', (_, e) => {
@@ -39,7 +47,7 @@ const engine = (on: On, store: Record<string, unknown> = {}) => {
   on('tool.register', () => ({ value: { tool: TOOL } }))
   on('ui.open', () => {
     opens += 1
-    return { value: { isPlaced: true } }
+    return { value: isPlaced ? { isPlaced: true as const } : { isPlaced: false as const, reason: 'below 144 columns' } }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
@@ -154,6 +162,44 @@ test('/ivo-tasks reopens the pane', async ($, on) => {
 
   expect(text).toContain('Opened')
   expect(opens).toBe(before + 1)
+})
+
+test('while the pane is not drawn, a button above the prompt opens it', async ($, on) => {
+  engine(on)
+  // The engine's own band, empty: the button is drawn above it, not in its place.
+  on('ui.render', ($, e) => {
+    const { Box } = $.ui.resolve(e)
+
+    return <Box key="engine-band" />
+  })
+  isPlaced = false
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+  await call($, { action: 'add', tasks: [{ title: 'Check login' }, { title: 'Check logout' }] })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    expect(await ui.find({ key: 'open-tasks' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^2 open$/ })).toBeDefined()
+    expect(await ui.find({ key: 'engine-band' })).toBeDefined()
+    await ui.unmount()
+  }
+
+  // The person's press is placed at any width; once the pane shows, the band is the engine's again.
+  isPlaced = true
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  const before = opens
+  await ui.press({ key: 'open-tasks' })
+  expect(opens).toBe(before + 1)
+  expect(await ui.find({ key: 'open-tasks' })).toBeUndefined()
+  expect(await ui.find({ key: 'engine-band' })).toBeDefined()
+  await ui.unmount()
+
+  // A survey keeps the band to itself.
+  isPlaced = false
+  await $.command.run({ command: 'ivo-tasks', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  const survey = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true }, surface: 'desktop' })
+  expect(await survey.find({ key: 'open-tasks' })).toBeUndefined()
+  await survey.unmount()
 })
 
 test('ticked tasks are struck through and the filter hides them', async ($, on) => {

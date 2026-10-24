@@ -17,7 +17,10 @@ export type Task = {
 
 declare module 'claude-code' {
   interface PluginState {
-    /** The session's project list, mirrored from `$.store`, whether the pane hides the ticked ones, and the open notes. */
-    'user-tasks': { tasks: Task[]; isHidingDone: boolean; openNotes: string[] }
+    /**
+     * The session's project list, mirrored from `$.store`, whether the pane hides the ticked ones, the open notes, and
+     * whether the pane is open and drawn (the band's reopen button shows while it is not).
+     */
+    'user-tasks': { tasks: Task[]; isHidingDone: boolean; openNotes: string[]; isPaneShown: boolean }
   }
 }
