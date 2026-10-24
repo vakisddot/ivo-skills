@@ -67,7 +67,7 @@ test('Claude adds grouped tasks, Ivo ticks one, Claude reads it back', async ($,
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: /0\/3 done/ })).toBeDefined()
     expect(await ui.find({ type: 'Markdown', text: /VERIFY LOGIN FIX/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /redirects to the home page/ })).toBeDefined()
+    expect(await ui.find({ type: 'Markdown', text: /redirects to the home page/ })).toBeDefined()
     await ui.unmount()
   }
 
@@ -166,7 +166,7 @@ test('ticked tasks are struck through and the filter hides them', async ($, on) 
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ key: 'filter' })).toBeDefined()
     expect((await ui.find({ type: 'Text', text: /^Check login$/ }))?.props?.strikethrough).toBe(true)
-    expect((await ui.find({ type: 'Text', text: /^Check logout$/ }))?.props?.strikethrough).toBe(false)
+    expect((await ui.find({ key: 'title-2' }))?.props?.text).toBe('**Check logout**')
     expect((await ui.find({ type: 'Text', text: /redirects/ }))?.props?.strikethrough).toBe(true)
     await ui.unmount()
   }
@@ -279,7 +279,7 @@ test('a (prev) link with no reply text is left as the plain label', async ($, on
   expect(await call($, { action: 'list' })).toContain('See why')
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ key: 'detail-1' })).toBeUndefined()
+  expect((await ui.find({ key: 'detail-1' }))?.props?.text).toBe('See why')
   await ui.unmount()
 })
 
@@ -304,7 +304,7 @@ test('one passage is open per task, and titles can hold links too', async ($, on
   await call($, { action: 'update', id: 1, detail: 'And [logout](prev)' })
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ key: 'title-1' })).toBeDefined()
+  expect((await ui.find({ key: 'title-1' }))?.props?.text).toBe('**Check [**login**](https://user-tasks.invalid/1-0)**')
   expect(await ui.find({ key: 'detail-1' })).toBeDefined()
 
   await ui.press({ key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })

@@ -129,18 +129,15 @@ export const register: Register = on => {
     const { Box, Button, Markdown, Text } = $.ui.resolve(e)
     const opened = await read($, openRefs)
     const words = (key: string, value: string, isDone: boolean, isTitle = false) =>
-      !value.includes(REF_HOST) ? (
-        <Text bold={isTitle} dimColor={isDone} strikethrough={isDone}>
-          {value}
-        </Text>
-      ) : isDone ? (
+      isDone ? (
         <Text bold={isTitle} dimColor strikethrough>
           {plain(value)}
         </Text>
       ) : (
         <Markdown
           key={key}
-          text={isTitle ? `**${value}**` : value}
+          text={isTitle ? bold(value) : value}
+          dimColor={!isTitle}
           onLinkPress={link => void togglePassage($, link.href.slice(REF_HOST.length))}
         />
       )
@@ -173,11 +170,12 @@ export const register: Register = on => {
         {all.length === 0 && <Text dimColor>Nothing for you to check yet.</Text>}
         {all.length > 0 && list.length === 0 && <Text dimColor>All done. Show done lists them.</Text>}
         {groups.map(group => (
-          <Box key={`group-${group}`} flexDirection="column" gap={1}>
-            {group !== '' && <Markdown text={`## ${group.toUpperCase()}`} />}
-            {list
-              .filter(t => (t.group ?? '') === group)
-              .map(t => (
+          <Box key={`group-${group}`} flexDirection="column">
+            {group !== '' && <Markdown text={`# ${group.toUpperCase()}`} />}
+            <Box flexDirection="column" gap={1}>
+              {list
+                .filter(t => (t.group ?? '') === group)
+                .map(t => (
                 <Box key={`row-${t.id}`} flexDirection="column">
                   <Box>
                     <Box flexShrink={0}>
@@ -213,7 +211,8 @@ export const register: Register = on => {
                         </Box>
                       ))}
                 </Box>
-              ))}
+                ))}
+            </Box>
           </Box>
         ))}
       </Box>
@@ -342,6 +341,8 @@ function withPassage(text: string, taskId: number, refs: Ref[], passage: string,
     return `[${label}](${REF_HOST}${id})`
   })
 }
+/** A title in bold, its link labels too, which markdown would otherwise leave regular. */
+const bold = (text: string) => `**${text.replace(REF_LINK, link => link.replace('[', '[**').replace('](', '**]('))}**`
 const plain = (text: string) => text.replace(REF_LINK, '$1')
 const marked = (text: string) => text.replace(REF_LINK, '$1 ↗')
 /** Opens or closes a kept passage, closing any other of the same task; an opened one is scrolled into view, since it lands below the task. */
