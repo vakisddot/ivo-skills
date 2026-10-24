@@ -29,6 +29,21 @@ box (or on his clipboard when the box is unavailable). When a message mentions "
 `list` and read item N, with its group and detail, before answering. The id, not the
 position, identifies it: ids never change while an item exists.
 
+## Links that open background text under a task
+
+Write `{{label|text}}` anywhere in a task's `title` or `detail`. It shows as a link named
+`label`; Ivo clicks it to open `text` (markdown, up to 2000 characters) in a framed block
+under the task, headed by the label, and clicks the header or the link again to close it.
+A task can hold several such links, and one block is open at a time per task.
+
+- Use it for background you would otherwise paste into chat: why the task exists, steps to
+  reproduce, expected results. Keep the title and the visible words of `detail` short.
+- Example `detail`: `Sign in with a valid account. {{Why this matters|The redirect changed, so check **both** paths.}}`
+- The text is stored with the task, so it works in any session and in tasks written with
+  `project`. Editing the title or detail so it no longer holds the link removes that text.
+- `list` shows each link as `label ↗` but not the text: you wrote it, so you already know it.
+- A blank `text` leaves the plain label. Ticked tasks hide their open blocks.
+
 ## How to use it
 
 - Write one short imperative `title` ("Open Settings and toggle dark mode") and put

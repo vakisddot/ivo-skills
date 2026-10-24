@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 
-import type { Task } from '../types'
+import type { Note, Task } from '../types'
 
 type Stored = { nextId: number; tasks: Task[] }
 type Input = {
@@ -19,13 +19,29 @@ type Input = {
 const PANE = 'user-tasks'
 const TOOL = 'mcp__user-tasks__user_tasks'
 const POLL_MS = 2000
+const MAX_NOTE = 2000
+const MAX_LABEL = 40
+/** The eye, with the text variation selector so it draws as a plain glyph, not a colour emoji. */
+const EYE = '\u{1F441}\uFE0E'
 
 const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
 const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
+/** The notes open now, by note id: at most one per task (note ids are `<task id>-<n>`). */
+const openNotes = atom({ plugin: 'user-tasks', key: 'openNotes' } as const, [])
+
+/** Claude writes `{{label|text}}` in a title or detail; it is stored as `[label](REF_HOST<note id>)` and a note. */
+const REF_HOST = 'https://user-tasks.invalid/'
+const NOTE_MARK = /\{\{([^|{}]+)\|([\s\S]*?)\}\}/g
+const NOTE_LINK = /\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/[^)\s]+\)/g
 
 // Module state. A reload re-runs session.start, which sets it again.
 let current = ''
 let queue: Promise<unknown> = Promise.resolve()
+
+const DETAIL_HELP =
+  'One line: what to look for. May hold {{label|text}}: it shows as a link labelled `label` that Ivo clicks to open `text` '
+  + '(markdown, up to 2000 characters) in a framed block under the task. Use it for background you would otherwise paste in chat; '
+  + 'several per task are fine.'
 
 const SCHEMA = {
   type: 'object',
@@ -37,8 +53,8 @@ const SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Short imperative title.' },
-          detail: { type: 'string', description: 'One line: what to look for.' },
+          title: { type: 'string', description: 'Short imperative title. May hold {{label|text}} notes, as detail.' },
+          detail: { type: 'string', description: DETAIL_HELP },
           group: { type: 'string', description: 'Section heading, e.g. "Verify login fix".' },
         },
         required: ['title'],
@@ -46,7 +62,7 @@ const SCHEMA = {
     },
     id: { type: 'number', description: 'update, remove: the item id.' },
     title: { type: 'string', description: 'update: new title.' },
-    detail: { type: 'string', description: 'update: new detail; "" removes it.' },
+    detail: { type: 'string', description: `update: new detail; "" removes it. ${DETAIL_HELP}` },
     group: { type: 'string', description: 'update: new group, "" ungroups; clear, list: only this group.' },
     done: { type: 'boolean', description: 'update: tick or untick. Ivo ticks items himself.' },
     scope: { enum: ['done', 'all'], description: 'clear: ticked items only (default) or everything.' },
@@ -63,8 +79,9 @@ export const register: Register = on => {
       description:
         'Ivo\'s persistent "Your tasks" checklist, one per project, always visible beside the chat. '
         + 'Put every checklist you hand Ivo (things to test, check or do) here instead of only in chat. '
-        + 'Actions: add {tasks:[{title,detail?,group?}]}, update {id,title?,detail?,group?,done?}, remove {id}, '
-        + 'clear {scope?:"done"|"all",group?}, list {group?} (returns what Ivo has ticked). '
+        + 'Actions: add {tasks:[{title,detail?,group?}]}, update {id,title?,detail?,group?,done?}, '
+        + 'remove {id}, clear {scope?:"done"|"all",group?}, list {group?} (returns what Ivo has ticked). '
+        + 'Titles and details may hold {{label|text}}: a link Ivo clicks to open text under the task, for context you would otherwise paste in chat. '
         + 'Optional project: folder path of another project. '
         + 'When Ivo mentions "user task #N" (e.g. "Regarding user task #N, ...") he means the item with id N in his list: list it to read what he refers to.',
       inputSchema: SCHEMA,
@@ -94,7 +111,21 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Markdown, Text } = $.ui.resolve(e)
+    const opened = await read($, openNotes)
+    const words = (key: string, value: string, isDone: boolean, isTitle = false) =>
+      isDone ? (
+        <Text bold={isTitle} dimColor strikethrough>
+          {plain(value)}
+        </Text>
+      ) : (
+        <Markdown
+          key={key}
+          text={isTitle ? bold(value) : value}
+          dimColor={!isTitle}
+          onLinkPress={link => void toggleNote($, link.href.slice(REF_HOST.length))}
+        />
+      )
     const all = await read($, tasks)
     const isHiding = await read($, isHidingDone)
     const doneCount = all.filter(t => t.done).length
@@ -106,64 +137,84 @@ export const register: Register = on => {
         <Box gap={1}>
           <Text bold>Your tasks</Text>
           <Text dimColor>
-            {doneCount}/{all.length} done
+            ✓ {doneCount}/{all.length} done
           </Text>
           {(doneCount > 0 || isHiding) && (
             <Button
               key="filter"
-              label={isHiding ? 'Show done' : 'Hide done'}
+              label={isHiding ? `${EYE} Show done` : `${EYE} Hide done`}
               plain
               dimColor
               onPress={() => void update($, isHidingDone, hiding => !hiding)}
             />
           )}
           {doneCount > 0 && (
-            <Button key="clear-done" label="Clear done" plain dimColor onPress={() => void change($, current, clearDone)} />
+            <Button key="clear-done" label="✕ Clear done" plain dimColor onPress={() => void change($, current, clearDone)} />
           )}
         </Box>
         {all.length === 0 && <Text dimColor>Nothing for you to check yet.</Text>}
         {all.length > 0 && list.length === 0 && <Text dimColor>All done. Show done lists them.</Text>}
         {groups.map(group => (
           <Box key={`group-${group}`} flexDirection="column" gap={1}>
-            {group !== '' && <Text bold>{group}</Text>}
-            {list
-              .filter(t => (t.group ?? '') === group)
-              .map(t => (
-                <Box key={`row-${t.id}`} flexDirection="column">
-                  <Box>
-                    <Box flexShrink={0}>
-                      <Button
-                        key={`task-${t.id}`}
-                        label={t.done ? '☑' : '☐'}
-                        plain
-                        dimColor={t.done}
-                        onPress={() => void change($, current, ts => toggle(ts, t.id))}
-                      />
+            {group !== '' && <Markdown text={`# ${group.toUpperCase()}`} />}
+            <Box flexDirection="column" gap={1}>
+              {list
+                .filter(t => (t.group ?? '') === group)
+                .map(t => (
+                  <Box key={`row-${t.id}`} flexDirection="column">
+                    <Box>
+                      <Box flexShrink={0}>
+                        <Button
+                          key={`task-${t.id}`}
+                          label={t.done ? '☑' : '☐'}
+                          plain
+                          dimColor={t.done}
+                          onPress={() => void change($, current, ts => toggle(ts, t.id))}
+                        />
+                      </Box>
+                      <Box flexGrow={1} flexShrink={1}>
+                        {words(`title-${t.id}`, t.title, t.done, true)}
+                      </Box>
+                      <Box flexShrink={0} paddingLeft={1}>
+                        <Button
+                          key={`ref-${t.id}`}
+                          label={`↩ #${t.id}`}
+                          plain
+                          dimColor
+                          onPress={press => void referTo($, t.id, press.surface)}
+                        />
+                      </Box>
                     </Box>
-                    <Box flexGrow={1} flexShrink={1}>
-                      <Text dimColor={t.done} strikethrough={t.done}>
-                        {t.title}
-                      </Text>
-                    </Box>
-                    <Box flexShrink={0} paddingLeft={1}>
-                      <Button
-                        key={`ref-${t.id}`}
-                        label={`↩ #${t.id}`}
-                        plain
-                        dimColor
-                        onPress={press => void referTo($, t.id, press.surface)}
-                      />
-                    </Box>
+                    {t.detail && <Box paddingLeft={2}>{words(`detail-${t.id}`, t.detail, t.done)}</Box>}
+                    {!t.done &&
+                      (t.notes ?? [])
+                        .filter(n => opened.includes(n.id))
+                        .map(n => (
+                          <Box key={`block-${n.id}`} flexDirection="column" paddingLeft={2} marginTop={1}>
+                            <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap={1}>
+                              <Box>
+                                <Box flexGrow={1} flexShrink={1}>
+                                  <Text bold dimColor>
+                                    {n.label}
+                                  </Text>
+                                </Box>
+                                <Box flexShrink={0} paddingLeft={1}>
+                                  <Button
+                                    key={`close-${n.id}`}
+                                    label="✕"
+                                    plain
+                                    dimColor
+                                    onPress={() => void toggleNote($, n.id)}
+                                  />
+                                </Box>
+                              </Box>
+                              <Markdown text={n.text} dimColor />
+                            </Box>
+                          </Box>
+                        ))}
                   </Box>
-                  {t.detail && (
-                    <Box paddingLeft={2}>
-                      <Text dimColor strikethrough={t.done}>
-                        {t.detail}
-                      </Text>
-                    </Box>
-                  )}
-                </Box>
-              ))}
+                ))}
+            </Box>
           </Box>
         ))}
       </Box>
@@ -195,9 +246,12 @@ async function run($: EngineInterface, input: Input): Promise<string> {
       const added: Task[] = []
       await change($, project, (list, stored) => {
         for (const t of titles) {
-          const task: Task = { id: stored.nextId++, title: t.title.trim(), done: false }
-          if (t.detail?.trim()) task.detail = t.detail.trim()
+          const task: Task = { id: stored.nextId++, title: '', done: false }
+          const notes: Note[] = []
+          task.title = withNotes(t.title.trim(), task.id, notes)
+          if (t.detail?.trim()) task.detail = withNotes(t.detail.trim(), task.id, notes)
           if (t.group?.trim()) task.group = t.group.trim()
+          if (notes.length > 0) task.notes = notes
           added.push(task)
         }
         return [...list, ...added]
@@ -213,13 +267,17 @@ async function run($: EngineInterface, input: Input): Promise<string> {
           if (t.id !== input.id) return t
           found = true
           const next: Task = { ...t }
-          if (input.title?.trim()) next.title = input.title.trim()
+          const notes: Note[] = [...(t.notes ?? [])]
+          if (input.title?.trim()) next.title = withNotes(input.title.trim(), t.id, notes)
           if (input.done !== undefined) next.done = input.done
           for (const key of ['detail', 'group'] as const) {
             if (input[key] === undefined) continue
-            if (input[key].trim()) next[key] = input[key].trim()
+            if (input[key].trim()) next[key] = key === 'detail' ? withNotes(input[key].trim(), t.id, notes) : input[key].trim()
             else delete next[key]
           }
+          const kept = notes.filter(n => `${next.title}\n${next.detail ?? ''}`.includes(`${REF_HOST}${n.id})`))
+          if (kept.length > 0) next.notes = kept
+          else delete next.notes
           return next
         }),
       )
@@ -260,11 +318,42 @@ function describe(list: Task[], project: string) {
   for (const group of new Set(list.map(t => t.group ?? ''))) {
     if (group !== '') out.push(group)
     for (const t of list.filter(one => (one.group ?? '') === group)) {
-      out.push(`  [${t.done ? 'x' : ' '}] #${t.id} ${t.title}${t.detail ? ` — ${t.detail}` : ''}`)
+      out.push(`  [${t.done ? 'x' : ' '}] #${t.id} ${marked(t.title)}${t.detail ? ` — ${marked(t.detail)}` : ''}`)
     }
   }
 
   return out.join('\n')
+}
+
+/** Turns each `{{label|text}}` into a link to a note kept on the task; a blank text leaves the plain label. */
+function withNotes(text: string, taskId: number, notes: Note[]) {
+  return text.replace(NOTE_MARK, (_, rawLabel: string, rawText: string) => {
+    const label = rawLabel.replace(/[[\]]/g, '').trim().slice(0, MAX_LABEL) || 'More'
+    const body = rawText.trim()
+    if (!body) return label
+    const id = `${taskId}-${notes.reduce((n, note) => Math.max(n, Number(note.id.split('-')[1]) + 1), 0)}`
+    notes.push({ id, label, text: body.length > MAX_NOTE ? `${body.slice(0, MAX_NOTE).trimEnd()}…` : body })
+
+    return `[${label}](${REF_HOST}${id})`
+  })
+}
+/** A title in bold, its link labels too, which markdown would otherwise leave regular. */
+const bold = (text: string) => `**${text.replace(NOTE_LINK, link => link.replace('[', '[**').replace('](', '**]('))}**`
+const plain = (text: string) => text.replace(NOTE_LINK, '$1')
+const marked = (text: string) => text.replace(NOTE_LINK, '$1 ↗')
+
+/** Opens or closes a note, closing any other of the same task; an opened one is scrolled into view. */
+async function toggleNote($: EngineInterface, id: string) {
+  const isOpening = !(await read($, openNotes)).includes(id)
+  await update($, openNotes, ids => {
+    const others = ids.filter(one => one.split('-')[0] !== id.split('-')[0])
+
+    return isOpening ? [...others, id] : others
+  })
+  if (isOpening) {
+    await $.clock.sleep(100)
+    await $.ui.scroll({ to: { key: `block-${id}` }, in: PANE, block: 'nearest' }).catch(() => undefined)
+  }
 }
 
 const toggle = (list: Task[], id: number) => list.map(t => (t.id === id ? { ...t, done: !t.done } : t))
@@ -296,7 +385,23 @@ async function refresh($: EngineInterface) {
 async function load($: EngineInterface, project: string): Promise<Stored> {
   const stored = (await $.store.get(keyOf(project))) as Partial<Stored> | undefined
 
-  return { nextId: stored?.nextId ?? 1, tasks: stored?.tasks ?? [] }
+  return { nextId: stored?.nextId ?? 1, tasks: (stored?.tasks ?? []).map(migrate) }
+}
+
+/**
+ * Reads a task saved by an earlier version: a chat passage (`refs`) becomes a note, labelled as the link to it in
+ * the task's text, and a note nothing links to is dropped.
+ */
+function migrate(task: Task): Task {
+  const { refs, ...rest } = task
+  const text = `${task.title}\n${task.detail ?? ''}`
+  const labels = new Map([...text.matchAll(/\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/([^)\s]+)\)/g)].map(m => [m[2], m[1]]))
+  const labelOf = (id: string) => labels.get(id) ?? 'More'
+  const all = [...(task.notes ?? []), ...(refs ?? []).map(r => ({ id: r.id, label: labelOf(r.id), text: r.text }))]
+  const notes = all.filter(n => text.includes(`${REF_HOST}${n.id})`))
+  if (!refs && notes.length === (task.notes ?? []).length) return task
+
+  return notes.length > 0 ? { ...rest, notes } : (({ notes: _, ...bare }) => bare)(rest)
 }
 
 /** A worktree shares its main repository's list. */
