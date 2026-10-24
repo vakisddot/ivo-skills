@@ -174,7 +174,7 @@ export const register: Register = on => {
         {all.length > 0 && list.length === 0 && <Text dimColor>All done. Show done lists them.</Text>}
         {groups.map(group => (
           <Box key={`group-${group}`} flexDirection="column" gap={1}>
-            {group !== '' && <Markdown text={`## ${group}`} />}
+            {group !== '' && <Markdown text={`## ${group.toUpperCase()}`} />}
             {list
               .filter(t => (t.group ?? '') === group)
               .map(t => (

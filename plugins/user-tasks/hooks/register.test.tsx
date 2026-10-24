@@ -66,7 +66,7 @@ test('Claude adds grouped tasks, Ivo ticks one, Claude reads it back', async ($,
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: /0\/3 done/ })).toBeDefined()
-    expect(await ui.find({ type: 'Markdown', text: /Verify login fix/ })).toBeDefined()
+    expect(await ui.find({ type: 'Markdown', text: /VERIFY LOGIN FIX/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /redirects to the home page/ })).toBeDefined()
     await ui.unmount()
   }
