@@ -32,8 +32,8 @@ const REF_HOST = 'https://user-tasks.invalid/'
 const REF_MARK = /\[([^\]]+)\]\(prev\)/g
 const REF_LINK = /\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/[^)\s]+\)/g
 const MAX_PASSAGE = 2000
-const ANIM_STEPS = 6
-const ANIM_STEP_MS = 30
+const ANIM_STEPS = 14
+const ANIM_STEP_MS = 16
 const MAX_PASSAGE_ROWS = 40
 
 // Module state. A reload re-runs session.start, which sets it again.
@@ -224,7 +224,7 @@ export const register: Register = on => {
                           <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
                             <Button
                               key={`close-${r.id}`}
-                              label="▾ From the chat · click to close"
+                              label="▾ From the chat"
                               plain
                               dimColor
                               onPress={() => void togglePassage($, r.id)}
@@ -376,13 +376,15 @@ function passageRows(text: string) {
   return Math.min(MAX_PASSAGE_ROWS, rows + 3)
 }
 
+const easeOut = (t: number) => 1 - (1 - t) ** 3
+
 /** Opens or closes a kept passage, closing any other of the same task; both slide over a few frames. */
 async function togglePassage($: EngineInterface, id: string) {
   const token = ++animToken
   const text = (await read($, tasks)).flatMap(t => t.refs ?? []).find(r => r.id === id)?.text ?? ''
   const rows = passageRows(text)
   const frame = async (step: number) => {
-    await update($, anim, () => ({ id, height: Math.max(1, Math.round((rows * step) / ANIM_STEPS)) }))
+    await update($, anim, () => ({ id, height: Math.max(1, Math.round(rows * easeOut(step / ANIM_STEPS))) }))
     await $.clock.sleep(ANIM_STEP_MS)
 
     return token === animToken
