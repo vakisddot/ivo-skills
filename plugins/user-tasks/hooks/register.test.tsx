@@ -166,7 +166,7 @@ test('ticked tasks are struck through and the filter hides them', async ($, on) 
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ key: 'filter' })).toBeDefined()
     expect((await ui.find({ type: 'Text', text: /^Check login$/ }))?.props?.strikethrough).toBe(true)
-    expect(await ui.find({ key: 'title-2' })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: /^Check logout$/ }))?.props?.strikethrough).toBe(false)
     expect((await ui.find({ type: 'Text', text: /redirects/ }))?.props?.strikethrough).toBe(true)
     await ui.unmount()
   }

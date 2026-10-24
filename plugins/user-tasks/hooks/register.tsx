@@ -130,33 +130,30 @@ export const register: Register = on => {
               .filter(t => (t.group ?? '') === group)
               .map(t => (
                 <Box key={`row-${t.id}`} flexDirection="column">
-                  <Box gap={1}>
-                    <Button
-                      key={`task-${t.id}`}
-                      label={t.done ? '☑' : '☐'}
-                      plain
-                      dimColor={t.done}
-                      onPress={() => void change($, current, ts => toggle(ts, t.id))}
-                    />
-                    {t.done ? (
-                      <Text dimColor strikethrough>
-                        {t.title}
-                      </Text>
-                    ) : (
+                  <Box>
+                    <Box flexShrink={0}>
                       <Button
-                        key={`title-${t.id}`}
-                        label={t.title}
+                        key={`task-${t.id}`}
+                        label={t.done ? '☑' : '☐'}
                         plain
+                        dimColor={t.done}
                         onPress={() => void change($, current, ts => toggle(ts, t.id))}
                       />
-                    )}
-                    <Button
-                      key={`ref-${t.id}`}
-                      label={`#${t.id}`}
-                      plain
-                      dimColor
-                      onPress={press => void referTo($, t.id, press.surface)}
-                    />
+                    </Box>
+                    <Box flexGrow={1} flexShrink={1}>
+                      <Text dimColor={t.done} strikethrough={t.done}>
+                        {t.title}
+                      </Text>
+                    </Box>
+                    <Box flexShrink={0} paddingLeft={1}>
+                      <Button
+                        key={`ref-${t.id}`}
+                        label={`↩ #${t.id}`}
+                        plain
+                        dimColor
+                        onPress={press => void referTo($, t.id, press.surface)}
+                      />
+                    </Box>
                   </Box>
                   {t.detail && (
                     <Box paddingLeft={2}>
