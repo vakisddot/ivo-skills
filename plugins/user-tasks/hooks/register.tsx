@@ -129,18 +129,33 @@ export const register: Register = on => {
               .filter(t => (t.group ?? '') === group)
               .map(t => (
                 <Box key={`row-${t.id}`} flexDirection="column">
-                  <Button
-                    key={`task-${t.id}`}
-                    label={`${t.done ? '☑' : '☐'} ${t.done ? strike(t.title) : t.title}`}
-                    plain
-                    dimColor={t.done}
-                    onPress={() => void change($, current, ts => toggle(ts, t.id))}
-                  />
+                  <Box gap={1}>
+                    <Button
+                      key={`task-${t.id}`}
+                      label={t.done ? '☑' : '☐'}
+                      plain
+                      dimColor={t.done}
+                      onPress={() => void change($, current, ts => toggle(ts, t.id))}
+                    />
+                    {t.done ? (
+                      <Text dimColor strikethrough>
+                        {t.title}
+                      </Text>
+                    ) : (
+                      <Button
+                        key={`title-${t.id}`}
+                        label={t.title}
+                        plain
+                        onPress={() => void change($, current, ts => toggle(ts, t.id))}
+                      />
+                    )}
+                  </Box>
                   {t.detail && (
-                    <Text dimColor strikethrough={t.done}>
-                      {'    '}
-                      {t.detail}
-                    </Text>
+                    <Box paddingLeft={2}>
+                      <Text dimColor strikethrough={t.done}>
+                        {t.detail}
+                      </Text>
+                    </Box>
                   )}
                 </Box>
               ))}
@@ -235,8 +250,6 @@ function describe(list: Task[], project: string) {
   return out.join('\n')
 }
 
-/** A Button label takes no styled children, so its strike-through is the combining stroke on each character. */
-const strike = (text: string) => [...text].map(c => `${c}̶`).join('')
 const toggle = (list: Task[], id: number) => list.map(t => (t.id === id ? { ...t, done: !t.done } : t))
 const clearDone = (list: Task[]) => list.filter(t => !t.done)
 
