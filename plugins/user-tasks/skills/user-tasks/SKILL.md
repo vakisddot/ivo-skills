@@ -33,7 +33,7 @@ position, identifies it: ids never change while an item exists.
 
 A `title` or `detail` may contain `[label](prev)`. The mod keeps a copy of the text you wrote
 just before this call (up to 2000 characters), and Ivo clicks `label` to read it under the
-task in the pane (one passage open at a time; opening another closes it), then clicks again to close it. Titles and details can both hold these links. The chat itself cannot be scrolled to from
+task in the pane (one passage open at a time per task; opening another link of the same task closes it), then clicks again to close it. Titles and details can both hold these links. The chat itself cannot be scrolled to from
 a mod, so the copy is the reference.
 
 - Write the explanation as a normal paragraph before the call, then link it from the task

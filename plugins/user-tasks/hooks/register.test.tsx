@@ -283,7 +283,7 @@ test('a (prev) link with no reply text is left as the plain label', async ($, on
   await ui.unmount()
 })
 
-test('one passage is open at a time, and titles can hold links too', async ($, on) => {
+test('one passage is open per task, and titles can hold links too', async ($, on) => {
   const clock = engine(on)
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
@@ -298,6 +298,8 @@ test('one passage is open at a time, and titles can hold links too', async ($, o
 
   await say('First reasoning.')
   await call($, { action: 'add', tasks: [{ title: 'Check [login](prev)' }] })
+  await say('Third reasoning.')
+  await call($, { action: 'add', tasks: [{ title: 'Other [task](prev)' }] })
   await say('Second reasoning.')
   await call($, { action: 'update', id: 1, detail: 'And [logout](prev)' })
 
@@ -308,9 +310,18 @@ test('one passage is open at a time, and titles can hold links too', async ($, o
   await ui.press({ key: 'title-1', link: { href: 'https://user-tasks.invalid/1-0' } })
   expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeDefined()
 
+  // The other task's passage opens without closing this one's.
+  await ui.press({ key: 'title-2', link: { href: 'https://user-tasks.invalid/2-0' } })
+  expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeDefined()
+  expect(await ui.find({ type: 'Markdown', text: /Third reasoning/ })).toBeDefined()
+
+  // A second link of the same task closes the first, and leaves the other task alone.
   await ui.press({ key: 'detail-1', link: { href: 'https://user-tasks.invalid/1-1' } })
   expect(await ui.find({ type: 'Markdown', text: /Second reasoning/ })).toBeDefined()
   expect(await ui.find({ type: 'Markdown', text: /First reasoning/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Markdown', text: /Third reasoning/ })).toBeDefined()
+  await ui.press({ key: 'detail-1', link: { href: 'https://user-tasks.invalid/1-1' } })
+  expect(await ui.find({ type: 'Markdown', text: /Second reasoning/ })).toBeUndefined()
 
   await clock.settle()
   await clock.advance(200)

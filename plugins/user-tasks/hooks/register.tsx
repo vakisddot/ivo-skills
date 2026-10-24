@@ -22,8 +22,8 @@ const POLL_MS = 2000
 
 const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
 const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
-/** The one passage open under a task, by ref id; '' for none. */
-const openRef = atom({ plugin: 'user-tasks', key: 'openRef' } as const, '')
+/** The passages open now, by ref id: at most one per task (ref ids are `<task id>-<n>`). */
+const openRefs = atom({ plugin: 'user-tasks', key: 'openRefs' } as const, [])
 
 /** Claude writes `[label](prev)`; it is stored as `[label](REF_HOST<ref id>)`, the ref holding a copy of the passage. */
 const REF_HOST = 'https://user-tasks.invalid/'
@@ -127,7 +127,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Markdown, Text } = $.ui.resolve(e)
-    const opened = await read($, openRef)
+    const opened = await read($, openRefs)
     const words = (key: string, value: string, isDone: boolean, isTitle = false) =>
       !value.includes(REF_HOST) ? (
         <Text bold={isTitle} dimColor={isDone} strikethrough={isDone}>
@@ -205,7 +205,7 @@ export const register: Register = on => {
                   {t.detail && <Box paddingLeft={2}>{words(`detail-${t.id}`, t.detail, t.done)}</Box>}
                   {!t.done &&
                     (t.refs ?? [])
-                      .filter(r => r.id === opened)
+                      .filter(r => opened.includes(r.id))
                       .map(r => (
                         <Box key={`passage-${r.id}`} flexDirection="column" paddingLeft={2}>
                           <Text dimColor>From the chat (click its link again to close):</Text>
@@ -344,10 +344,14 @@ function withPassage(text: string, taskId: number, refs: Ref[], passage: string,
 }
 const plain = (text: string) => text.replace(REF_LINK, '$1')
 const marked = (text: string) => text.replace(REF_LINK, '$1 ↗')
-/** Opens or closes a kept passage, closing any other; an opened one is scrolled into view, since it lands below the task. */
+/** Opens or closes a kept passage, closing any other of the same task; an opened one is scrolled into view, since it lands below the task. */
 async function togglePassage($: EngineInterface, id: string) {
-  const isOpening = (await read($, openRef)) !== id
-  await update($, openRef, () => (isOpening ? id : ''))
+  const isOpening = !(await read($, openRefs)).includes(id)
+  await update($, openRefs, ids => {
+    const others = ids.filter(one => one.split('-')[0] !== id.split('-')[0])
+
+    return isOpening ? [...others, id] : others
+  })
   if (isOpening) {
     await $.clock.sleep(100)
     await $.ui.scroll({ to: { key: `passage-${id}` }, in: PANE, block: 'nearest' }).catch(() => undefined)
