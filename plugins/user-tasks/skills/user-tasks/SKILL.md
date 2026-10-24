@@ -24,8 +24,8 @@ branch worktree shares the repo's list.
 
 ## When Ivo refers to a task
 
-Every item shows its id as `#N` in the pane; clicking it puts `User task #N` in his prompt
-box (or on his clipboard when the box is unavailable). When a message says "User task #N",
+Every item shows its id as `#N` in the pane; clicking it puts `Regarding user task #N, ` in his prompt
+box (or on his clipboard when the box is unavailable). When a message mentions "user task #N",
 `list` and read item N, with its group and detail, before answering. The id, not the
 position, identifies it: ids never change while an item exists.
 

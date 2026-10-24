@@ -66,7 +66,7 @@ export const register: Register = on => {
         + 'Actions: add {tasks:[{title,detail?,group?}]}, update {id,title?,detail?,group?,done?}, remove {id}, '
         + 'clear {scope?:"done"|"all",group?}, list {group?} (returns what Ivo has ticked). '
         + 'Optional project: folder path of another project. '
-        + 'When Ivo writes "User task #N" he means the item with id N in his list: list it to read what he refers to.',
+        + 'When Ivo mentions "user task #N" (e.g. "Regarding user task #N, ...") he means the item with id N in his list: list it to read what he refers to.',
       inputSchema: SCHEMA,
       isDeferred: false,
     })
@@ -171,15 +171,15 @@ export const register: Register = on => {
   })
 }
 
-/** Puts "User task #N" in the prompt box at the cursor; without a box, on the clipboard. */
+/** Puts "Regarding user task #N, " in the prompt box at the cursor; without a box, on the clipboard. */
 async function referTo($: EngineInterface, id: number, surface: RenderSurface) {
   const { text, cursor } = await $.prompt.read()
-  const mention = `User task #${id}`
+  const mention = `Regarding user task #${id}, `
   const needsSpace = cursor > 0 && !/\s/.test(text[cursor - 1] ?? ' ')
-  const filled = await $.prompt.fill({ text: `${needsSpace ? ' ' : ''}${mention} `, mode: 'insert' })
+  const filled = await $.prompt.fill({ text: `${needsSpace ? ' ' : ''}${mention}`, mode: 'insert' })
   if (!filled.isFilled) {
-    const copied = await $.ui.copy({ text: mention, surface })
-    $.ui.toast(copied.isCopied ? `Copied "${mention}"` : `Could not copy "${mention}"`)
+    const copied = await $.ui.copy({ text: mention.trimEnd(), surface })
+    $.ui.toast(copied.isCopied ? `Copied "${mention.trimEnd()}"` : `Could not copy "${mention.trimEnd()}"`)
   }
 }
 

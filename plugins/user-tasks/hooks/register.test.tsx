@@ -184,7 +184,7 @@ test('ticked tasks are struck through and the filter hides them', async ($, on) 
   await ui.unmount()
 })
 
-test('clicking #N puts "User task #N" in the prompt box, or on the clipboard', async ($, on) => {
+test('clicking #N puts "Regarding user task #N, " in the prompt box, or on the clipboard', async ($, on) => {
   engine(on)
   let draft = { text: 'see', cursor: 3 }
   let isBoxOpen = true
@@ -205,14 +205,14 @@ test('clicking #N puts "User task #N" in the prompt box, or on the clipboard', a
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'ref-2' })
-  expect(filled).toEqual([' User task #2 '])
+  expect(filled).toEqual([' Regarding user task #2, '])
 
   draft = { text: '', cursor: 0 }
   await ui.press({ key: 'ref-1' })
-  expect(filled[1]).toBe('User task #1 ')
+  expect(filled[1]).toBe('Regarding user task #1, ')
 
   isBoxOpen = false
   await ui.press({ key: 'ref-1' })
-  expect(copied).toEqual(['User task #1'])
+  expect(copied).toEqual(['Regarding user task #1,'])
   await ui.unmount()
 })
