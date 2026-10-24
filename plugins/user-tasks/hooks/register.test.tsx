@@ -216,3 +216,37 @@ test('clicking #N puts "Regarding user task #N, " in the prompt box, or on the c
   expect(copied).toEqual(['Regarding user task #1,'])
   await ui.unmount()
 })
+
+test('[label](here) in a task links back to the chat row of the call', async ($, on) => {
+  engine(on)
+  const toasts: string[] = []
+  // The test kit has no transcript to scroll, so the press ends in the mod's "not available" toast.
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+  await $.tool.call({
+    tool: TOOL,
+    tool_use_id: 'toolu_42',
+    action: 'add',
+    tasks: [{ title: 'Check login', detail: 'Why: see [the reasoning](here) first' }, { title: 'Check logout' }],
+  } as never)
+
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ key: 'detail-1' })).toBeDefined()
+    await ui.unmount()
+  }
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'detail-1', link: { href: 'https://user-tasks.invalid/toolu_42' } })
+  expect(toasts).toEqual(['That part of the chat is not available in this session.'])
+
+  expect(await call($, { action: 'list' })).toContain('Why: see the reasoning ↗ first')
+
+  await call($, { action: 'update', id: 1, done: true })
+  expect(await ui.find({ key: 'detail-1' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /Why: see the reasoning first/ })).toBeDefined()
+  await ui.unmount()
+})

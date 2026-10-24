@@ -29,6 +29,17 @@ box (or on his clipboard when the box is unavailable). When a message mentions "
 `list` and read item N, with its group and detail, before answering. The id, not the
 position, identifies it: ids never change while an item exists.
 
+## Linking back to the chat
+
+A `title` or `detail` may contain links Ivo can click to scroll the chat back to a passage:
+
+- `[label](here)` jumps to this tool call's row in the chat.
+- `[label](prev)` jumps to the text you wrote just before this call.
+
+Use them rarely, only where a passage explains why the task exists or what to look for,
+and write the explanation before the call so `(prev)` lands on it. A task may hold a few.
+Links work only in this session's transcript; `list` shows them as `label ↗`.
+
 ## How to use it
 
 - Write one short imperative `title` ("Open Settings and toggle dark mode") and put

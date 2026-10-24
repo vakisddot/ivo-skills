@@ -23,8 +23,14 @@ const POLL_MS = 2000
 const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
 const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
 
+/** A link to a chat row is stored as `[label](REF_HOST<row id>)`; Claude writes `[label](here)` or `[label](prev)`. */
+const REF_HOST = 'https://user-tasks.invalid/'
+const REF_MARK = /\[([^\]]+)\]\((here|prev)\)/g
+const REF_LINK = /\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/[^)\s]+\)/g
+
 // Module state. A reload re-runs session.start, which sets it again.
 let current = ''
+let lastMessage = ''
 let queue: Promise<unknown> = Promise.resolve()
 
 const SCHEMA = {
@@ -38,7 +44,12 @@ const SCHEMA = {
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Short imperative title.' },
-          detail: { type: 'string', description: 'One line: what to look for.' },
+          detail: {
+            type: 'string',
+            description:
+              'One line: what to look for. May hold links back into this chat: [label](here) is this call, '
+              + '[label](prev) the text you wrote just before it. Use sparingly, only where a passage explains the task.',
+          },
           group: { type: 'string', description: 'Section heading, e.g. "Verify login fix".' },
         },
         required: ['title'],
@@ -66,6 +77,7 @@ export const register: Register = on => {
         + 'Actions: add {tasks:[{title,detail?,group?}]}, update {id,title?,detail?,group?,done?}, remove {id}, '
         + 'clear {scope?:"done"|"all",group?}, list {group?} (returns what Ivo has ticked). '
         + 'Optional project: folder path of another project. '
+        + 'Titles and details may hold [label](here) or [label](prev) links that Ivo can click to jump back to this chat. '
         + 'When Ivo mentions "user task #N" (e.g. "Regarding user task #N, ...") he means the item with id N in his list: list it to read what he refers to.',
       inputSchema: SCHEMA,
       isDeferred: false,
@@ -87,14 +99,33 @@ export const register: Register = on => {
 
   on('tool.call', { tool: TOOL }, async ($, e) => {
     try {
-      return { result: await run($, e as Input) }
+      return { result: await run($, e as Input, e.tool_use_id) }
     } catch (err) {
       return { deny: `user_tasks: ${String(err)}` }
     }
   })
 
+  // The latest reply block drawn is the text Claude wrote just before a call, which `(prev)` points at.
+  on('ui.render', { component: 'AssistantMessage' }, (_, e, next) => {
+    lastMessage = e.requestId
+
+    return next(e)
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Markdown, Text } = $.ui.resolve(e)
+    const words = (key: string, value: string, isDone: boolean) =>
+      !value.includes(REF_HOST) ? (
+        <Text dimColor={isDone} strikethrough={isDone}>
+          {value}
+        </Text>
+      ) : isDone ? (
+        <Text dimColor strikethrough>
+          {plain(value)}
+        </Text>
+      ) : (
+        <Markdown key={key} text={value} onLinkPress={link => void jumpTo($, link.href)} />
+      )
     const all = await read($, tasks)
     const isHiding = await read($, isHidingDone)
     const doneCount = all.filter(t => t.done).length
@@ -141,9 +172,7 @@ export const register: Register = on => {
                       />
                     </Box>
                     <Box flexGrow={1} flexShrink={1}>
-                      <Text dimColor={t.done} strikethrough={t.done}>
-                        {t.title}
-                      </Text>
+                      {words(`title-${t.id}`, t.title, t.done)}
                     </Box>
                     <Box flexShrink={0} paddingLeft={1}>
                       <Button
@@ -157,9 +186,7 @@ export const register: Register = on => {
                   </Box>
                   {t.detail && (
                     <Box paddingLeft={2}>
-                      <Text dimColor strikethrough={t.done}>
-                        {t.detail}
-                      </Text>
+                      {words(`detail-${t.id}`, t.detail, t.done)}
                     </Box>
                   )}
                 </Box>
@@ -183,7 +210,8 @@ async function referTo($: EngineInterface, id: number, surface: RenderSurface) {
   }
 }
 
-async function run($: EngineInterface, input: Input): Promise<string> {
+async function run($: EngineInterface, input: Input, callId: string | undefined): Promise<string> {
+  const refs = (text: string) => withRefs(text, callId)
   const project = input.project ? await projectOf($, input.project) : current
 
   switch (input.action) {
@@ -195,8 +223,8 @@ async function run($: EngineInterface, input: Input): Promise<string> {
       const added: Task[] = []
       await change($, project, (list, stored) => {
         for (const t of titles) {
-          const task: Task = { id: stored.nextId++, title: t.title.trim(), done: false }
-          if (t.detail?.trim()) task.detail = t.detail.trim()
+          const task: Task = { id: stored.nextId++, title: refs(t.title.trim()), done: false }
+          if (t.detail?.trim()) task.detail = refs(t.detail.trim())
           if (t.group?.trim()) task.group = t.group.trim()
           added.push(task)
         }
@@ -213,11 +241,11 @@ async function run($: EngineInterface, input: Input): Promise<string> {
           if (t.id !== input.id) return t
           found = true
           const next: Task = { ...t }
-          if (input.title?.trim()) next.title = input.title.trim()
+          if (input.title?.trim()) next.title = refs(input.title.trim())
           if (input.done !== undefined) next.done = input.done
           for (const key of ['detail', 'group'] as const) {
             if (input[key] === undefined) continue
-            if (input[key].trim()) next[key] = input[key].trim()
+            if (input[key].trim()) next[key] = key === 'detail' ? refs(input[key].trim()) : input[key].trim()
             else delete next[key]
           }
           return next
@@ -260,11 +288,30 @@ function describe(list: Task[], project: string) {
   for (const group of new Set(list.map(t => t.group ?? ''))) {
     if (group !== '') out.push(group)
     for (const t of list.filter(one => (one.group ?? '') === group)) {
-      out.push(`  [${t.done ? 'x' : ' '}] #${t.id} ${t.title}${t.detail ? ` — ${t.detail}` : ''}`)
+      out.push(`  [${t.done ? 'x' : ' '}] #${t.id} ${marked(t.title)}${t.detail ? ` — ${marked(t.detail)}` : ''}`)
     }
   }
 
   return out.join('\n')
+}
+
+/** Turns `[label](here)` / `[label](prev)` into links to the chat row of this call, or the reply text before it. */
+const withRefs = (text: string, callId: string | undefined) =>
+  text.replace(REF_MARK, (_, label: string, to: string) => {
+    const row = to === 'prev' ? lastMessage || callId : callId
+
+    return row ? `[${label}](${REF_HOST}${encodeURIComponent(row)})` : label
+  })
+const plain = (text: string) => text.replace(REF_LINK, '$1')
+const marked = (text: string) => text.replace(REF_LINK, '$1 ↗')
+
+/** Scrolls the chat to the row a task link names; the row can be gone from this session. */
+async function jumpTo($: EngineInterface, href: string) {
+  const requestId = decodeURIComponent(href.slice(REF_HOST.length))
+  const moved = await $.ui.scroll({ to: { requestId }, block: 'center' }).catch(() => ({ deny: 'gone' }))
+  if ('deny' in moved && moved.deny) {
+    $.ui.toast('That part of the chat is not available in this session.')
+  }
 }
 
 const toggle = (list: Task[], id: number) => list.map(t => (t.id === id ? { ...t, done: !t.done } : t))
