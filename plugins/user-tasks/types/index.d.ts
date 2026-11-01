@@ -15,12 +15,29 @@ export type Task = {
   refs?: Ref[]
 }
 
+/** What the run controls in the band show; `off` when the checkout has no `.claude/run.json`. */
+export type RunnerView = {
+  phase: 'off' | 'idle' | 'building' | 'running'
+  profile: string
+  branch: string
+}
+
 declare module 'claude-code' {
   interface PluginState {
     /**
-     * The session's project list, mirrored from `$.store`, whether the pane hides the ticked ones, the open notes, and
-     * whether the pane is open and drawn (the band's reopen button shows while it is not).
+     * The session's project list, mirrored from `$.store`, whether the pane hides the ticked ones, the open notes,
+     * whether the pane is open and drawn (the band's reopen button shows while it is not), the run controls' view,
+     * the run profiles and the one chosen, and whether the person hid the whole band.
      */
-    'user-tasks': { tasks: Task[]; isHidingDone: boolean; openNotes: string[]; isPaneShown: boolean }
+    'user-tasks': {
+      tasks: Task[]
+      isHidingDone: boolean
+      openNotes: string[]
+      isPaneShown: boolean
+      runView: RunnerView
+      runProfiles: string[]
+      runChoice: string
+      isBandHidden: boolean
+    }
   }
 }

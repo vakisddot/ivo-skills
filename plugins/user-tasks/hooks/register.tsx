@@ -1,9 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 
-import type { Note, Task } from '../types'
+import type { Note, RunnerView, Task } from '../types'
 
 type Stored = { nextId: number; tasks: Task[] }
+type Profile = { name: string; build?: string[]; run: [string, ...string[]]; cwd?: string }
+type RunConfig = { profiles: Profile[] }
+type Running = { profile: string; pid?: number; isStopping: boolean }
 type Input = {
   action?: 'add' | 'update' | 'remove' | 'clear' | 'list'
   project?: string
@@ -24,12 +27,25 @@ const MAX_LABEL = 40
 /** The eye, with the text variation selector so it draws as a plain glyph, not a colour emoji. */
 const EYE = '\u{1F441}\uFE0E'
 
+const CONFIG_PATH = '.claude/run.json'
+const BUILD_TIMEOUT_MS = 600_000
+const MAX_ERROR_LINES = 10
+const CRASH_TAIL_LINES = 15
+const IDLE: RunnerView = { phase: 'idle', profile: '', branch: '' }
+
 const tasks = atom({ plugin: 'user-tasks', key: 'tasks' } as const, [])
 const isHidingDone = atom({ plugin: 'user-tasks', key: 'isHidingDone' } as const, false)
 /** The notes open now, by note id: at most one per task (note ids are `<task id>-<n>`). */
 const openNotes = atom({ plugin: 'user-tasks', key: 'openNotes' } as const, [])
 /** Whether the pane is open and drawn; while it is not, the band above the prompt offers a button that opens it. */
 const isPaneShown = atom({ plugin: 'user-tasks', key: 'isPaneShown' } as const, false)
+/** What the run controls in the band show; set at session start from whether the checkout has a run.json. */
+const runView = atom({ plugin: 'user-tasks', key: 'runView' } as const, { ...IDLE, phase: 'off' })
+/** The profile names in run.json, and the one the Start button runs. */
+const runProfiles = atom({ plugin: 'user-tasks', key: 'runProfiles' } as const, [])
+const runChoice = atom({ plugin: 'user-tasks', key: 'runChoice' } as const, '')
+/** Whether the person hid the whole band above the prompt (its Hide button, /ivo-band). */
+const isBandHidden = atom({ plugin: 'user-tasks', key: 'isBandHidden' } as const, false)
 
 /** Claude writes `{{label|text}}` in a title or detail; it is stored as `[label](REF_HOST<note id>)` and a note. */
 const REF_HOST = 'https://user-tasks.invalid/'
@@ -39,6 +55,8 @@ const NOTE_LINK = /\[([^\]]+)\]\(https:\/\/user-tasks\.invalid\/[^)\s]+\)/g
 // Module state. A reload re-runs session.start, which sets it again.
 let current = ''
 let queue: Promise<unknown> = Promise.resolve()
+// A reload forgets the running app, which keeps running untracked: stop that one by hand.
+let running: Running | undefined
 
 const DETAIL_HELP =
   'One line: what to look for. May hold {{label|text}}: it shows as a link labelled `label` that Ivo clicks to open `text` '
@@ -76,6 +94,22 @@ const SCHEMA = {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'ivo-tasks', description: 'Open the "Your tasks" pane', immediate: true })
+    await $.command.register({
+      name: 'ivo-runner-start',
+      description: `Build and run this checkout (${CONFIG_PATH})`,
+      argumentHint: '[profile]',
+      immediate: true,
+    })
+    await $.command.register({
+      name: 'ivo-runner-stop',
+      description: 'Stop the app started by /ivo-runner-start',
+      immediate: true,
+    })
+    await $.command.register({
+      name: 'ivo-band',
+      description: 'Show or hide the band above the prompt (run controls and the Your tasks button)',
+      immediate: true,
+    })
     await $.tool.register({
       name: 'user_tasks',
       description:
@@ -95,6 +129,19 @@ export const register: Register = on => {
     $.clock.every(POLL_MS, () => void refresh($))
     void openPane($).catch(() => undefined)
 
+    // Also runs on reload, which killed any child, so the run controls restart from idle.
+    const hasConfig = await $.fs.exists(`${await $.session.root()}/${CONFIG_PATH}`)
+    await update($, runView, () => (hasConfig ? IDLE : { ...IDLE, phase: 'off' }))
+    if (hasConfig) {
+      let names: string[] = []
+      try {
+        names = (await readConfig($)).profiles.map(p => p.name)
+      } catch {
+        // An unreadable or malformed file leaves no choices; Start says why when pressed.
+      }
+      await setProfiles($, names)
+    }
+
     return next(e)
   })
 
@@ -104,6 +151,15 @@ export const register: Register = on => {
     return { text: 'Opened the "Your tasks" pane.' }
   })
 
+  on('command.run', { command: 'ivo-runner-start' }, async ($, e) => ({ text: await start($, e.args) }))
+  on('command.run', { command: 'ivo-runner-stop' }, async $ => ({ text: await stop($) }))
+  on('command.run', { command: 'ivo-band' }, async $ => {
+    const isNowHidden = !(await read($, isBandHidden))
+    await update($, isBandHidden, () => isNowHidden)
+
+    return { text: isNowHidden ? 'Band hidden. /ivo-band shows it again.' : 'Band shown.' }
+  })
+
   on('ui.close', { id: PANE }, async ($, e, next) => {
     const closed = await next(e)
     await update($, isPaneShown, () => false)
@@ -111,19 +167,53 @@ export const register: Register = on => {
     return closed
   })
 
+  // One row above the prompt: the run controls on the left, the reopen button and Hide on the right.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey || (await read($, isPaneShown))) {
+    const run = await read($, runView)
+    const hasButton = !(await read($, isPaneShown))
+    if (e.props.hasSurvey || (await read($, isBandHidden)) || (run.phase === 'off' && !hasButton)) {
       return next(e)
     }
 
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Select, Text } = $.ui.resolve(e)
     const open = (await read($, tasks)).filter(t => !t.done).length
+    const profiles = await read($, runProfiles)
+    const choice = await read($, runChoice)
 
     return (
       <Box flexDirection="column">
-        <Button key="open-tasks" plain onPress={() => void openPane($)}>
-          ☐ Your tasks <Text dimColor>{open} open</Text>
-        </Button>
+        <Box justifyContent="space-between">
+          <Box>
+            {run.phase === 'idle' && profiles.length > 1 && (
+              <Select
+                key="profile"
+                options={profiles.map(value => ({ value }))}
+                value={choice}
+                onSelect={value => update($, runChoice, () => value)}
+              />
+            )}
+            {run.phase === 'idle' && (
+              <Button key="start" label="▶ Start" plain onPress={async () => $.ui.toast(await start($, ''))} />
+            )}
+            {run.phase === 'building' && <Text dimColor>Building {run.profile}…</Text>}
+            {run.phase === 'running' && (
+              <>
+                <Text>
+                  ▶ {run.profile} · {run.branch}{' '}
+                </Text>
+                <Button key="stop" label="■ Stop" plain onPress={async () => $.ui.toast(await stop($))} />
+              </>
+            )}
+          </Box>
+          <Box gap={1}>
+            {hasButton && (
+              <Button key="open-tasks" plain onPress={() => void openPane($)}>
+                📋 Your tasks <Text dimColor>- {open} open</Text>
+              </Button>
+            )}
+            <Button key="hide" label="Hide" plain onPress={() => update($, isBandHidden, () => true)} />
+          </Box>
+        </Box>
         {await next(e)}
       </Box>
     )
@@ -447,3 +537,123 @@ async function projectOf($: EngineInterface, dir: string) {
 
 const norm = (path: string) => path.trim().replaceAll('\\', '/').replace(/\/+$/, '')
 const keyOf = (project: string) => `list:${project.toLowerCase()}`
+
+// The run controls: build and run this checkout from .claude/run.json.
+
+async function start($: EngineInterface, args: string) {
+  if (running) {
+    return `${running.profile} is already running. Use /ivo-runner-stop first.`
+  }
+
+  const root = await $.session.root()
+  let config: RunConfig
+  try {
+    config = await readConfig($)
+  } catch (err) {
+    return `Cannot read ${CONFIG_PATH} in ${root}: ${String(err)}`
+  }
+
+  // The file may have changed since the band drew its picker; an argument beats the pick.
+  await setProfiles($, config.profiles.map(p => p.name))
+  const wanted = (args.trim() || (await read($, runChoice))).toLowerCase()
+  const profile = wanted ? config.profiles.find(p => p.name.toLowerCase() === wanted) : config.profiles[0]
+  if (!profile) {
+    return `No profile "${args.trim()}". Profiles: ${config.profiles.map(p => p.name).join(', ')}`
+  }
+
+  running = { profile: profile.name, isStopping: false }
+  void launch($, root, profile, running)
+
+  return `${profile.build ? 'Building' : 'Starting'} ${profile.name} from ${root}`
+}
+
+async function readConfig($: EngineInterface): Promise<RunConfig> {
+  return JSON.parse(await $.fs.read(`${await $.session.root()}/${CONFIG_PATH}`))
+}
+
+/** Sets the picker's choices from run.json, keeping the person's pick while it still exists. */
+async function setProfiles($: EngineInterface, names: string[]) {
+  await update($, runProfiles, () => names)
+  await update($, runChoice, pick => (names.includes(pick) ? pick : (names[0] ?? '')))
+}
+
+async function stop($: EngineInterface) {
+  if (!running) {
+    return 'Nothing is running.'
+  }
+  if (running.pid === undefined) {
+    return `${running.profile} is still building; stop it once it starts.`
+  }
+
+  running.isStopping = true
+  const killed = await $.process.run(['taskkill', '/PID', String(running.pid), '/T', '/F'])
+
+  return killed.exitCode === 0 ? `Stopped ${running.profile}.` : `taskkill failed: ${killed.stderr.trim()}`
+}
+
+async function launch($: EngineInterface, root: string, profile: Profile, state: Running) {
+  try {
+    if (profile.build) {
+      await update($, runView, () => ({ ...IDLE, phase: 'building', profile: profile.name }))
+      const built = await $.process.run(profile.build, { cwd: root, timeoutMs: BUILD_TIMEOUT_MS })
+      if (built.exitCode !== 0) {
+        const errors = [...new Set(lines(built.stdout + built.stderr).filter(l => /\berror\b/i.test(l)))]
+        $.ui.log(`${profile.name}: build failed (exit ${built.exitCode})\n${errors.slice(0, MAX_ERROR_LINES).join('\n')}`)
+        $.ui.toast(`${profile.name}: build failed`)
+        return
+      }
+    }
+
+    const branch = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd: root })
+    const [exe, ...args] = profile.run
+    // The host starts children with their window hidden, so launch through Start-Process to show it,
+    // print the app's PID for /ivo-runner-stop, and pass its exit code through.
+    const script = [
+      `$p = Start-Process -PassThru -FilePath ${quote(/[\/]/.test(exe) ? resolve(root, exe) : exe)}`
+        + ` -WorkingDirectory ${quote(profile.cwd ? resolve(root, profile.cwd) : root)}`
+        + (args.length > 0 ? ` -ArgumentList ${args.map(quote).join(',')}` : ''),
+      '$null = $p.Handle', // Caches the handle so ExitCode is readable after the wait.
+      'Write-Output $p.Id',
+      '$p.WaitForExit()',
+      'exit $p.ExitCode',
+    ].join('; ')
+    const child = $.process.spawn({ argv: ['powershell', '-NoProfile', '-NonInteractive', '-Command', script] })
+
+    // The first stdout line is the PID; the rest is launcher errors, kept for the failure report.
+    let tail: string[] = []
+    for await (const { stream, text } of child) {
+      const pid = Number(text.trim())
+      if (state.pid === undefined && stream === 'stdout' && Number.isInteger(pid) && pid > 0) {
+        state.pid = pid
+        await update($, runView, () => ({ phase: 'running', profile: profile.name, branch: branch.stdout.trim() || root }))
+        continue
+      }
+      tail = [...tail, ...lines(text)].slice(-CRASH_TAIL_LINES)
+    }
+
+    const { code } = await child.result
+    if (code !== 0 && !state.isStopping) {
+      $.ui.log(`${profile.name} exited with code ${code}\n${tail.join('\n')}`)
+      $.ui.toast(`${profile.name} exited with code ${code}`)
+    }
+  } catch (err) {
+    if (!state.isStopping) {
+      $.ui.log(`${profile.name}: ${String(err)}`)
+    }
+  } finally {
+    running = undefined
+    await update($, runView, () => IDLE)
+  }
+}
+
+function resolve(root: string, path: string) {
+  return /^([A-Za-z]:)?[\/]/.test(path) ? path : `${root}/${path}`
+}
+
+function quote(value: string) {
+  return `'${value.replaceAll("'", "''")}'`
+}
+
+function lines(text: string) {
+  return text.split(/\r?\n/).filter(l => l.trim() !== '')
+}
