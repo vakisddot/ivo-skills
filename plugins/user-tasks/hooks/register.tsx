@@ -197,12 +197,13 @@ export const register: Register = on => {
             )}
             {run.phase === 'building' && <Text dimColor>Building {run.profile}…</Text>}
             {run.phase === 'running' && (
-              <>
-                <Text>
-                  ▶ {run.profile} · {run.branch}{' '}
+              // One Button, so the app's name and branch cannot drop to a line below Stop.
+              <Button key="stop" plain onPress={async () => $.ui.toast(await stop($))}>
+                ■ Stop{' '}
+                <Text dimColor>
+                  {run.profile} · {run.branch}
                 </Text>
-                <Button key="stop" label="■ Stop" plain onPress={async () => $.ui.toast(await stop($))} />
-              </>
+              </Button>
             )}
           </Box>
           <Box gap={1}>

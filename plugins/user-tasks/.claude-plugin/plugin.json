@@ -1,6 +1,6 @@
 {
   "name": "user-tasks",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "An always-visible 'Your tasks' checklist pane per project (Claude adds things for you to check or do through the user_tasks tool, you tick them off, Claude reads what you ticked), and a band above the prompt with Start/Stop for the checkout and a button that reopens the pane.",
   "author": { "name": "Ivo" },
   "types": "./types/index.d.ts"
