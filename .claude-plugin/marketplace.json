@@ -16,17 +16,8 @@
       "source": "./plugins/ivo"
     },
     {
-      "name": "app-runner",
-      "description": "Claude Code mod: build and run the session's checkout from .claude/run.json with a Start/Stop band above the prompt, /ivo-runner-start, /ivo-runner-stop and /ivo-runner-toggle.",
-      "author": {
-        "name": "Ivo"
-      },
-      "category": "development",
-      "source": "./plugins/app-runner"
-    },
-    {
       "name": "user-tasks",
-      "description": "Claude Code mod: an always-visible \"Your tasks\" checklist pane per project. Claude adds things for you to check or do through the user_tasks tool, you tick them off, Claude reads what you ticked.",
+      "description": "Claude Code mod: an always-visible \"Your tasks\" checklist pane per project, plus a band above the prompt with Start/Stop for the checkout (.claude/run.json) and a button that reopens the pane. Claude adds things for you to check or do through the user_tasks tool, you tick them off, Claude reads what you ticked.",
       "author": {
         "name": "Ivo"
       },

@@ -56,11 +56,29 @@ claude plugin marketplace add /path/to/ivo-skills
 
 ## Mods
 
-`app-runner` is a separate, Claude Code-only plugin: a mod, not a skill, so Codex
-does not load it. It adds a Start/Stop band above the prompt, plus
-`/ivo-runner-start [profile]`, `/ivo-runner-stop` and `/ivo-runner-toggle` (show or
-hide the band; the band's Hide button does the same), for any checkout that has a
-`.claude/run.json`:
+`user-tasks` is a Claude Code-only plugin: a mod, not a skill, so Codex does not load it.
+It has two parts that share the band above the prompt.
+
+**Your tasks.** A checklist pane that stays beside the chat.
+Things Claude asks you to check or do (a test checklist, say) go there instead of
+scrolling away in the transcript; you tick them off and Claude can read what you ticked.
+Lists are per project (a worktree shares its repository's list) and survive restarts.
+Claude writes to it through one tool, `mcp__user-tasks__user_tasks` (`add`, `update`,
+`remove`, `clear`, `list`), documented in `plugins/user-tasks/skills/user-tasks`.
+`/ivo-tasks` reopens the pane if you closed it. Ticked items are struck through;
+Hide done and Clear done tidy the list. Clicking a task's `#N` puts `Regarding user task #N, ` in
+your prompt, so Claude knows which one you mean.
+A task's title or detail can also hold links Claude writes (`{{label|text}}`); clicking one opens
+its text in a framed block under the task, headed by the link's name.
+
+![The Your tasks pane](docs/user-tasks.png)
+
+**The band.** One row above the prompt. On the left, a Start/Stop control for any checkout that
+has a `.claude/run.json`; on the right, a `📋 Your tasks - N open` button that shows while the
+pane is closed, and Hide. Hide, or `/ivo-band`, hides the whole band; `/ivo-band` shows it again.
+With more than one profile a picker next to Start chooses which one Start runs (the first by
+default; `run.json` is re-read when you press Start). `/ivo-runner-start [profile]` and
+`/ivo-runner-stop` do what the Start and Stop buttons do:
 
 ```json
 {
@@ -76,38 +94,22 @@ hide the band; the band's Hide button does the same), for any checkout that has 
 ```
 
 Paths are relative to the session's checkout, so a worktree session runs its own
-branch. The first profile is the default. `build` is optional. The app is launched
+branch. `build` is optional. The app is launched
 through PowerShell `Start-Process` so its window shows; `/ivo-runner-stop` runs `taskkill` on
 its PID. Windows only. The app outlives the session and a mod reload; stop it first.
 
 ```
-/plugin install app-runner@ivo-skills
+/plugin install user-tasks@ivo-skills
 ```
+
+This mod replaces the earlier `app-runner` plugin, whose run controls now live here:
+uninstall `app-runner@ivo-skills` and update `user-tasks`. `/ivo-runner-toggle` is now `/ivo-band`.
 
 Check it after editing:
 
 ```
-claude plugin validate plugins/app-runner
-claude plugin test plugins/app-runner
-```
-
-`user-tasks` is a second mod: a "Your tasks" checklist pane that stays beside the chat.
-Things Claude asks you to check or do (a test checklist, say) go there instead of
-scrolling away in the transcript; you tick them off and Claude can read what you ticked.
-Lists are per project (a worktree shares its repository's list) and survive restarts.
-Claude writes to it through one tool, `mcp__user-tasks__user_tasks` (`add`, `update`,
-`remove`, `clear`, `list`), documented in `plugins/user-tasks/skills/user-tasks`.
-`/ivo-tasks` reopens the pane if you closed it, as does the `☐ Your tasks` button the
-band above the prompt shows while the pane is closed. Ticked items are struck through;
-Hide done and Clear done tidy the list. Clicking a task's `#N` puts `Regarding user task #N, ` in
-your prompt, so Claude knows which one you mean.
-A task's title or detail can also hold links Claude writes (`{{label|text}}`); clicking one opens
-its text in a framed block under the task, headed by the link's name.
-
-![The Your tasks pane](docs/user-tasks.png)
-
-```
-/plugin install user-tasks@ivo-skills
+claude plugin validate plugins/user-tasks
+claude plugin test plugins/user-tasks
 ```
 
 ## Layout

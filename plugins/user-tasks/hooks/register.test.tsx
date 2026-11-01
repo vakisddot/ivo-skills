@@ -22,13 +22,21 @@ const BAND = {
   props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
 } as const
 
+const RUN = { args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } } as const
+
 let opens = 0
+/** The commands the mod ran through $.process.run, in order. */
+let ran: string[][] = []
+/** Whether the session's checkout has a .claude/run.json. */
+let hasRunConfig = false
 /** Whether a surface draws the pane the mod opens; false stands for a terminal too narrow for an unasked pane. */
 let isPlaced = true
 
 /** Stands in for the engine under the mod: a repo at C:/Repo; a folder under worktrees/ shares its git dir. */
 const engine = (on: On, store: Record<string, unknown> = {}) => {
   opens = 0
+  ran = []
+  hasRunConfig = false
   isPlaced = true
   const clock = mock.clock(on)
   on('store.get', (_, e) => ({ value: store[e.key] }))
@@ -37,7 +45,9 @@ const engine = (on: On, store: Record<string, unknown> = {}) => {
     return { value: undefined }
   })
   on('session.root', () => ({ value: 'C:/Repo' }))
+  on('fs.exists', () => ({ value: hasRunConfig }))
   on('process.run', (_, e) => {
+    ran.push([...e.argv])
     const cwd = String(e.init?.cwd).replaceAll('\\', '/')
     const common = cwd.includes('/worktrees/') ? 'C:/Repo/.git' : `${cwd}/.git`
 
@@ -179,7 +189,7 @@ test('while the pane is not drawn, a button above the prompt opens it', async ($
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
     expect(await ui.find({ key: 'open-tasks' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /^2 open$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^- 2 open$/ })).toBeDefined()
     expect(await ui.find({ key: 'engine-band' })).toBeDefined()
     await ui.unmount()
   }
@@ -200,6 +210,129 @@ test('while the pane is not drawn, a button above the prompt opens it', async ($
   const survey = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true }, surface: 'desktop' })
   expect(await survey.find({ key: 'open-tasks' })).toBeUndefined()
   await survey.unmount()
+})
+
+test('/ivo-runner-stop with nothing running says so', async ($, on) => {
+  engine(on)
+
+  const { text } = await $.command.run({ ...RUN, command: 'ivo-runner-stop' })
+
+  expect(text).toBe('Nothing is running.')
+})
+
+test('/ivo-runner-start without a config reports the missing file', async ($, on) => {
+  engine(on)
+  on('fs.read', () => ({ deny: 'ENOENT' }))
+
+  const { text } = await $.command.run({ ...RUN, command: 'ivo-runner-start' })
+
+  expect(text).toContain('Cannot read .claude/run.json in C:/Repo')
+})
+
+test('/ivo-runner-start with an unknown profile lists the profiles', async ($, on) => {
+  engine(on)
+  on('fs.read', () => ({ value: JSON.stringify({ profiles: [{ name: 'Game', run: ['game.exe'] }] }) }))
+
+  const { text } = await $.command.run({ ...RUN, command: 'ivo-runner-start', args: 'editor' })
+
+  expect(text).toBe('No profile "editor". Profiles: Game')
+})
+
+test('the band offers Start only when the checkout has a run.json', async ($, on) => {
+  engine(on)
+  on('fs.read', () => ({ value: JSON.stringify({ profiles: [{ name: 'Game', run: ['game.exe'] }] }) }))
+  on('ui.render', ($, e) => {
+    const { Box } = $.ui.resolve(e)
+
+    return <Box />
+  })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const exists of [false, true]) {
+      hasRunConfig = exists
+      await $.session.start({ cwd: 'C:/Repo', surface, isInteractive: true })
+      const ui = await $.ui.mount({ ...BAND, surface })
+      expect((await ui.find({ key: 'start' })) !== undefined).toBe(exists)
+      await ui.unmount()
+    }
+  }
+})
+
+test("Hide hides the run controls and the tasks button together, and /ivo-band brings them back", async ($, on) => {
+  engine(on)
+  // The pane is not drawn, so the tasks button shows beside Start; the engine's band stays beneath both.
+  isPlaced = false
+  hasRunConfig = true
+  on('ui.render', ($, e) => {
+    const { Box } = $.ui.resolve(e)
+
+    return <Box key="engine-band" />
+  })
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ key: 'start' })).toBeDefined()
+  expect(await ui.find({ key: 'open-tasks' })).toBeDefined()
+  expect(await ui.find({ key: 'engine-band' })).toBeDefined()
+
+  await ui.press({ key: 'hide' })
+  expect(await ui.find({ key: 'start' })).toBeUndefined()
+  expect(await ui.find({ key: 'open-tasks' })).toBeUndefined()
+  expect(await ui.find({ key: 'engine-band' })).toBeDefined()
+
+  const { text } = await $.command.run({ ...RUN, command: 'ivo-band' })
+  expect(text).toBe('Band shown.')
+  expect(await ui.find({ key: 'start' })).toBeDefined()
+  expect(await ui.find({ key: 'open-tasks' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('with several profiles the band offers a picker, and Start runs the pick', async ($, on) => {
+  engine(on)
+  hasRunConfig = true
+  on('fs.read', () => ({
+    value: JSON.stringify({
+      profiles: [
+        { name: 'Game', build: ['build-game'], run: ['game.exe'] },
+        { name: 'Editor', build: ['build-editor'], run: ['editor.exe'] },
+      ],
+    }),
+  }))
+  on('ui.render', ($, e) => {
+    const { Box } = $.ui.resolve(e)
+
+    return <Box />
+  })
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    expect((await ui.find({ key: 'profile' }))?.props?.value).toBe('Game')
+    await ui.unmount()
+  }
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await ui.select({ key: 'profile', value: 'Editor' })
+  expect((await ui.find({ key: 'profile' }))?.props?.value).toBe('Editor')
+  await ui.press({ key: 'start' })
+  expect(ran.some(argv => argv[0] === 'build-editor')).toBe(true)
+  expect(ran.some(argv => argv[0] === 'build-game')).toBe(false)
+  await ui.unmount()
+})
+
+test('one profile needs no picker', async ($, on) => {
+  engine(on)
+  hasRunConfig = true
+  on('fs.read', () => ({ value: JSON.stringify({ profiles: [{ name: 'Game', run: ['game.exe'] }] }) }))
+  on('ui.render', ($, e) => {
+    const { Box } = $.ui.resolve(e)
+
+    return <Box />
+  })
+  await $.session.start({ cwd: 'C:/Repo', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ key: 'start' })).toBeDefined()
+  expect(await ui.find({ key: 'profile' })).toBeUndefined()
+  await ui.unmount()
 })
 
 test('ticked tasks are struck through and the filter hides them', async ($, on) => {
